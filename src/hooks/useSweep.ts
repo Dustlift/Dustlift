@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { encodeFunctionData, erc20Abi } from "viem";
 import {
@@ -9,7 +9,7 @@ import {
   useSendTransaction,
   useWriteContract,
 } from "wagmi";
-import { MAX_BATCH_CALLS } from "@/lib/constants";
+import { BASE_CHAIN_ID, MAX_BATCH_CALLS } from "@/lib/constants";
 import type { BatchCall, SwapQuote, TokenBalance } from "@/lib/types";
 
 export type SweepProgress = {
@@ -196,7 +196,7 @@ export function useSweep() {
       total: tokens.length,
       status: "batching",
       mode: "batch",
-      message: "Preparing batch quotes…",
+      message: "Preparing batch quotes...",
     });
 
     const quotes = await fetchQuotes(address, tokens);
@@ -213,7 +213,7 @@ export function useSweep() {
       total: batches.length,
       status: "batching",
       mode: "batch",
-      message: `${batches.length} batch confirmation(s) — fewer signatures than one-by-one`,
+      message: `${batches.length} batch confirmation(s) - fewer signatures than one-by-one`,
     });
 
     for (let i = 0; i < batches.length; i++) {
@@ -239,6 +239,9 @@ export function useSweep() {
     onProgress: (p: SweepProgress) => void,
   ) {
     if (!address || !publicClient || tokens.length === 0) return;
+    if (chainId !== BASE_CHAIN_ID) {
+      throw new Error("Please switch to Base before sweeping tokens.");
+    }
 
     onProgress({
       current: 0,
@@ -259,7 +262,7 @@ export function useSweep() {
           total: tokens.length,
           status: "swapping",
           mode: "sequential",
-          message: "Batch unsupported — falling back to sequential…",
+          message: "Batch unavailable - falling back to sequential swaps...",
         });
         await sweepSequential(tokens, onProgress);
         return;
@@ -277,3 +280,4 @@ export function useSweep() {
 
   return { sweep, supportsBatch };
 }
+

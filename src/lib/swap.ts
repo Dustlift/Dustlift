@@ -1,3 +1,4 @@
+import { isAddress } from "viem";
 import { BASE_CHAIN_ID, ETH_ADDRESS, ZEROX_BASE_URL } from "./constants";
 import { getFeeConfig } from "./fees";
 import type { SwapQuote } from "./types";
@@ -29,21 +30,42 @@ function buildSearchParams(params: QuoteParams): URLSearchParams {
   return search;
 }
 
-function parseQuoteResponse(data: Record<string, unknown>): SwapQuote {
-  const tx = data.transaction as Record<string, string> | undefined;
+function asAddress(value: unknown): `0x${string}` | undefined {
+  return typeof value === "string" && isAddress(value)
+    ? (value.toLowerCase() as `0x${string}`)
+    : undefined;
+}
+
+function asHex(value: unknown): `0x${string}` | undefined {
+  return typeof value === "string" && value.startsWith("0x")
+    ? (value as `0x${string}`)
+    : undefined;
+}
+
+function parseQuoteResponse(data: Record<string, unknown>): SwapQuote | null {
+  if (data.liquidityAvailable === false) return null;
+
+  const tx = data.transaction as Record<string, unknown> | undefined;
   const fees = data.fees as Record<string, unknown> | undefined;
   const integratorFee = fees?.integratorFee as
     | { amount?: string; token?: string }
     | undefined;
+  const issues = data.issues as Record<string, unknown> | undefined;
+  const allowance = issues?.allowance as Record<string, unknown> | undefined;
+
+  const to = asAddress(tx?.to);
+  const txData = asHex(tx?.data);
+  if (!to || !txData) return null;
 
   return {
     buyAmount: String(data.buyAmount ?? "0"),
     sellAmount: String(data.sellAmount ?? "0"),
-    estimatedGas: tx?.gas ?? String(data.estimatedGas ?? "180000"),
-    to: tx?.to as `0x${string}`,
-    data: tx?.data as `0x${string}`,
-    value: tx?.value ?? "0",
-    allowanceTarget: data.allowanceTarget as `0x${string}` | undefined,
+    estimatedGas: tx?.gas != null ? String(tx.gas) : String(data.estimatedGas ?? "180000"),
+    to,
+    data: txData,
+    value: tx?.value != null ? String(tx.value) : "0",
+    allowanceTarget:
+      asAddress(data.allowanceTarget) ?? asAddress(allowance?.spender),
     feeAmount: integratorFee?.amount,
   };
 }

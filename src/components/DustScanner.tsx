@@ -181,7 +181,9 @@ export function DustScanner() {
     <>
       <section className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="flex flex-col gap-2">
-          <span className="text-sm text-[#8a9a8c]">Dust threshold (USD)</span>
+          <span className="text-sm text-[#8a9a8c]">
+            Dust threshold (tokens below this USD value)
+          </span>
           <input
             type="number"
             min={0.01}
@@ -209,8 +211,8 @@ export function DustScanner() {
 
       {supportsBatch && (
         <p className="text-xs text-[#6b8f71]">
-          Your wallet supports batch transactions - multiple swaps in fewer
-          signatures.
+          Batch mode available: selected approves and swaps can be bundled in
+          fewer confirmations.
         </p>
       )}
 
@@ -327,6 +329,10 @@ export function DustScanner() {
               <p className="text-xl text-[#e8e4dc]">
                 ~{formatUsd(estimatedRecovery)} to ETH
               </p>
+              <p className="text-xs text-[#8a9a8c]">
+                ETH is paid back to your connected wallet. DustLift fee is taken
+                from each successful 0x swap.
+              </p>
               {progress.status !== "idle" && progress.status !== "done" && (
                 <p className="text-sm text-[#6b8f71]">
                   {progress.status === "batching" && progress.message}
@@ -352,7 +358,7 @@ export function DustScanner() {
               }
               className="rounded-xl bg-[#e8e4dc] px-8 py-3 font-semibold text-[#0f1410] transition hover:bg-white disabled:opacity-50"
             >
-              Convert to ETH
+              Convert selected to ETH
             </button>
           </div>
         </section>

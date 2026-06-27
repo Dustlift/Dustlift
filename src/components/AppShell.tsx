@@ -1,12 +1,13 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { DustScanner } from "@/components/DustScanner";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
 import { BuilderActivatePanel } from "@/components/BuilderActivatePanel";
+import { SwapPanel } from "@/components/SwapPanel";
+import { WalletStatus } from "@/components/WalletStatus";
 
-type Tab = "dust" | "builder" | "approvals";
+type Tab = "dust" | "swap" | "builder" | "approvals";
 
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("dust");
@@ -26,13 +27,14 @@ export function AppShell() {
             approvals.
           </p>
         </div>
-        <ConnectButton />
+        <WalletStatus />
       </header>
 
       <nav className="flex gap-2 rounded-xl border border-[#3d4a3f]/60 bg-[#141a16]/80 p-1">
         {(
           [
             ["dust", "Dust -> ETH"],
+            ["swap", "Swap"],
             ["builder", "Builder"],
             ["approvals", "Approvals"],
           ] as const
@@ -53,6 +55,7 @@ export function AppShell() {
       </nav>
 
       {tab === "dust" && <DustScanner />}
+      {tab === "swap" && <SwapPanel />}
       {tab === "builder" && <BuilderActivatePanel />}
       {tab === "approvals" && <ApprovalPanel />}
     </div>

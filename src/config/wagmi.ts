@@ -1,18 +1,40 @@
+import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import {
+  base as baseWallet,
+  coinbaseWallet,
+  injectedWallet,
+  metaMaskWallet,
+  walletConnectWallet,
+} from "@rainbow-me/rainbowkit/wallets";
 import { createConfig, http, cookieStorage, createStorage } from "wagmi";
 import { base } from "wagmi/chains";
-import { coinbaseWallet, injected, walletConnect } from "wagmi/connectors";
 import { APP_NAME } from "@/lib/constants";
 
 const projectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "YOUR_PROJECT_ID";
 
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: "Base",
+      wallets: [
+        baseWallet,
+        coinbaseWallet,
+        metaMaskWallet,
+        walletConnectWallet,
+        injectedWallet,
+      ],
+    },
+  ],
+  {
+    appName: APP_NAME,
+    projectId,
+  },
+);
+
 export const wagmiConfig = createConfig({
   chains: [base],
-  connectors: [
-    injected({ shimDisconnect: true }),
-    coinbaseWallet({ appName: APP_NAME, preference: "all" }),
-    walletConnect({ projectId }),
-  ],
+  connectors,
   storage: createStorage({ storage: cookieStorage }),
   ssr: true,
   transports: {
