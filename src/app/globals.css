@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f1410;
+  --foreground: #e8e4dc;
+  --accent: #6b8f71;
+  --muted: #8a9a8c;
+  --surface: #141a16;
+  --border: #3d4a3f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-playfair);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* Petrichor gradient backdrop */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, #2a3d2e 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, #1e2820 0%, transparent 50%),
+    var(--background);
+}
