@@ -2,7 +2,7 @@ import { connectorsForWallets } from "@rainbow-me/rainbowkit";
 import {
   base as baseWallet,
   coinbaseWallet,
-  metaMaskWallet,
+  injectedWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { createConfig, http, cookieStorage, createStorage } from "wagmi";
@@ -18,7 +18,7 @@ const connectors = connectorsForWallets(
       groupName: "Base",
       wallets: [
         baseWallet,
-        metaMaskWallet,
+        injectedWallet,
         coinbaseWallet,
         walletConnectWallet,
       ],
