@@ -1,4 +1,4 @@
-import { BLOCKSCOUT_BASE } from "./constants";
+import { BLOCKSCOUT_BASE, ETH_ADDRESS } from "./constants";
 import { isScamAddress, getKnownScamReason } from "./scam";
 import type { TokenBalance } from "./types";
 
@@ -9,8 +9,14 @@ type BlockscoutTokenItem = {
     name?: string | null;
     decimals?: string | null;
     is_scam?: boolean | null;
+    icon_url?: string | null;
+    icon?: string | null;
   };
   value?: string | null;
+};
+
+type BlockscoutAddress = {
+  coin_balance?: string | null;
 };
 
 type RawToken = Omit<
@@ -31,10 +37,12 @@ export async function fetchWalletTokens(
     throw new Error(`Blockscout error: ${res.status}`);
   }
 
-  const data = (await res.json()) as { items?: BlockscoutTokenItem[] };
-  const items = data.items ?? [];
+  const data = (await res.json()) as
+    | BlockscoutTokenItem[]
+    | { items?: BlockscoutTokenItem[] };
+  const items = Array.isArray(data) ? data : data.items ?? [];
 
-  return items
+  const erc20Tokens = items
     .filter((item) => {
       const addr = item.token?.address_hash;
       const value = item.value;
@@ -54,6 +62,7 @@ export async function fetchWalletTokens(
         symbol: item.token?.symbol?.trim() || "???",
         name: item.token?.name?.trim() || "Unknown Token",
         decimals,
+        iconUrl: item.token?.icon_url ?? item.token?.icon ?? null,
         balance,
         balanceFormatted,
         isScam,
@@ -63,6 +72,34 @@ export async function fetchWalletTokens(
           : undefined,
       };
     });
+
+  const nativeEth = await fetchNativeEth(walletAddress);
+  return nativeEth ? [nativeEth, ...erc20Tokens] : erc20Tokens;
+}
+
+async function fetchNativeEth(walletAddress: string): Promise<RawToken | null> {
+  const res = await fetch(`${BLOCKSCOUT_BASE}/addresses/${walletAddress}`, {
+    headers: { accept: "application/json" },
+    next: { revalidate: 30 },
+  });
+
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as BlockscoutAddress;
+  const balance = BigInt(data.coin_balance ?? "0");
+  if (balance <= 0n) return null;
+
+  return {
+    address: ETH_ADDRESS,
+    symbol: "ETH",
+    name: "Ethereum",
+    decimals: 18,
+    iconUrl: null,
+    isNative: true,
+    balance,
+    balanceFormatted: Number(balance) / 1e18,
+    isScam: false,
+  };
 }
 
 export async function fetchTokenPrices(
@@ -70,7 +107,14 @@ export async function fetchTokenPrices(
 ): Promise<Record<string, number>> {
   if (addresses.length === 0) return {};
 
-  const coins = addresses.map((a) => `base:${a}`).join(",");
+  const normalized = addresses.map((a) => a.toLowerCase());
+  const ethKey = ETH_ADDRESS.toLowerCase();
+  const coins = [
+    ...normalized
+      .filter((a) => a !== ethKey)
+      .map((a) => `base:${a}`),
+    ...(normalized.includes(ethKey) ? ["coingecko:ethereum"] : []),
+  ].join(",");
   const res = await fetch(`https://coins.llama.fi/prices/current/${coins}`, {
     next: { revalidate: 60 },
   });
@@ -83,7 +127,10 @@ export async function fetchTokenPrices(
 
   const prices: Record<string, number> = {};
   for (const [key, val] of Object.entries(data.coins ?? {})) {
-    const addr = key.replace(/^base:/i, "").toLowerCase();
+    const addr =
+      key.toLowerCase() === "coingecko:ethereum"
+        ? ethKey
+        : key.replace(/^base:/i, "").toLowerCase();
     if (val.price != null) prices[addr] = val.price;
   }
   return prices;
@@ -95,10 +142,14 @@ export function enrichTokensWithPricing(
   dustThresholdUsd: number,
 ): TokenBalance[] {
   return tokens.map((token) => {
-    const usdPrice = prices[token.address] ?? null;
+    const usdPrice = prices[token.address.toLowerCase()] ?? null;
     const usdValue =
       usdPrice != null ? token.balanceFormatted * usdPrice : null;
-    const isDust = usdValue != null ? usdValue < dustThresholdUsd : true;
+    const isDust = token.isNative
+      ? false
+      : usdValue != null
+        ? usdValue < dustThresholdUsd
+        : true;
 
     return {
       ...token,

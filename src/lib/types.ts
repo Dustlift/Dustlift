@@ -3,6 +3,8 @@ export type TokenBalance = {
   symbol: string;
   name: string;
   decimals: number;
+  iconUrl?: string | null;
+  isNative?: boolean;
   balance: bigint;
   balanceFormatted: number;
   usdPrice: number | null;

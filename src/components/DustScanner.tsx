@@ -296,6 +296,14 @@ export function DustScanner() {
             </button>
           </div>
 
+          <div className="hidden grid-cols-[auto_1.5fr_1fr_1fr_1fr_auto] gap-3 px-4 text-xs uppercase tracking-wide text-[#6b7a6d] sm:grid">
+            <span />
+            <span>Token</span>
+            <span>Price</span>
+            <span>Amount</span>
+            <span>USD value</span>
+            <span />
+          </div>
           <ul className="divide-y divide-[#2a332c] overflow-hidden rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/90">
             {dustTokens.map((token) => (
               <TokenRow
@@ -387,17 +395,24 @@ function TokenRow({
   variant?: "dust" | "scam";
 }) {
   return (
-    <li className="flex items-center gap-4 px-4 py-3 hover:bg-[#1a211c]/80">
-      {variant === "dust" && (
-        <input
-          type="checkbox"
-          checked={selected}
-          disabled={disabled}
-          onChange={onToggle}
-          className="size-4 accent-[#6b8f71]"
-        />
-      )}
-      <div className="min-w-0 flex-1">
+    <li className="grid gap-3 px-4 py-3 hover:bg-[#1a211c]/80 sm:grid-cols-[auto_1.5fr_1fr_1fr_1fr_auto] sm:items-center">
+      <div>
+        {variant === "dust" ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            disabled={disabled}
+            onChange={onToggle}
+            className="size-4 accent-[#6b8f71]"
+          />
+        ) : (
+          <span className="block size-4" />
+        )}
+      </div>
+
+      <div className="flex min-w-0 items-center gap-3">
+        <TokenAvatar token={token} />
+        <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-[#e8e4dc]">
             {shortenSymbol(token.symbol)}
@@ -420,15 +435,20 @@ function TokenRow({
         {token.scamReason && (
           <p className="text-xs text-red-300/80">{token.scamReason}</p>
         )}
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="text-right text-sm">
-          <p className="text-[#c5cdc6]">
-            {formatTokenAmount(token.balance, token.decimals)}
-          </p>
-          <p className="text-[#6b8f71]">{formatUsd(token.usdValue)}</p>
         </div>
-        <div className="flex flex-col gap-1">
+      </div>
+
+      <p className="text-sm text-[#c5cdc6] sm:text-left">
+        {formatUsd(token.usdPrice)}
+      </p>
+      <p className="text-sm text-[#c5cdc6] sm:text-left">
+        {formatTokenAmount(token.balance, token.decimals)}
+      </p>
+      <p className="text-sm text-[#6b8f71] sm:text-left">
+        {formatUsd(token.usdValue)}
+      </p>
+
+      <div className="flex gap-3 sm:flex-col sm:gap-1">
           <button
             type="button"
             onClick={onHide}
@@ -454,9 +474,28 @@ function TokenRow({
               Unhide
             </button>
           )}
-        </div>
       </div>
     </li>
+  );
+}
+
+function TokenAvatar({ token }: { token: TokenBalance }) {
+  const fallback = token.symbol.slice(0, 2).toUpperCase();
+
+  if (token.iconUrl) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{ backgroundImage: `url(${token.iconUrl})` }}
+        className="size-8 shrink-0 rounded-full bg-[#2a332c] bg-cover bg-center"
+      />
+    );
+  }
+
+  return (
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#2a332c] text-xs font-semibold text-[#c5cdc6]">
+      {fallback}
+    </span>
   );
 }
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getKnownScamAddresses, getKnownScamReason } from "@/lib/scam";
 import { DEFAULT_DUST_THRESHOLD_USD } from "@/lib/constants";
 import {
@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   const threshold = Number(
     request.nextUrl.searchParams.get("threshold") ?? DEFAULT_DUST_THRESHOLD_USD,
   );
+  const checkSwaps = request.nextUrl.searchParams.get("swaps") !== "false";
 
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return NextResponse.json({ error: "Invalid address" }, { status: 400 });
@@ -38,17 +39,19 @@ export async function GET(request: NextRequest) {
     tokens = scanRoute;
 
     const hasZeroX = Boolean(process.env.ZEROX_API_KEY);
-    if (hasZeroX) {
+    if (hasZeroX && checkSwaps) {
       tokens = await markSwappableTokens(tokens, address);
     } else {
       tokens = tokens.map((t) => ({
         ...t,
-        isSwappable: t.isDust && !t.isScam && t.usdValue != null,
+        isSwappable: false,
         swapBlockedReason: t.isScam
           ? "Flagged as scam"
-          : t.isDust
-            ? "0x API key missing — add ZEROX_API_KEY to enable swaps"
-            : undefined,
+          : !checkSwaps
+            ? undefined
+            : t.isDust
+              ? "0x API key missing - add ZEROX_API_KEY to enable swaps"
+              : undefined,
       }));
     }
 
@@ -78,7 +81,7 @@ async function markSwappableTokens(
   tokens: TokenBalance[],
   takerAddress: string,
 ): Promise<TokenBalance[]> {
-  const dustTokens = tokens.filter((t) => t.isDust && !t.isScam);
+  const dustTokens = tokens.filter((t) => t.isDust && !t.isScam && !t.isNative);
 
   const results = await Promise.all(
     dustTokens.map(async (token) => {
@@ -129,3 +132,4 @@ function serializeToken(token: TokenBalance) {
     balance: token.balance.toString(),
   };
 }
+

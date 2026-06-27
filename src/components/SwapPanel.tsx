@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { erc20Abi, formatUnits, isAddress, parseUnits } from "viem";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { erc20Abi, formatUnits, parseUnits } from "viem";
 import {
   useAccount,
   usePublicClient,
@@ -10,14 +10,19 @@ import {
   useWriteContract,
 } from "wagmi";
 import { BASE_CHAIN_ID } from "@/lib/constants";
-import type { SwapQuote } from "@/lib/types";
+import { formatTokenAmount, formatUsd } from "@/lib/format";
+import type { ScanSummary, SwapQuote, TokenBalance } from "@/lib/types";
 
-type TokenMeta = {
-  symbol: string;
-  decimals: number;
+type SerializedToken = Omit<TokenBalance, "balance"> & { balance: string };
+
+type ScanResponse = {
+  tokens: SerializedToken[];
+  summary: ScanSummary;
+  hasZeroX: boolean;
+  error?: string;
 };
 
-type Status = "idle" | "loading" | "approving" | "swapping" | "done" | "error";
+type Status = "idle" | "loading" | "quoting" | "approving" | "swapping" | "done" | "error";
 
 export function SwapPanel() {
   const { address, chainId, isConnected } = useAccount();
@@ -26,69 +31,75 @@ export function SwapPanel() {
   const { writeContractAsync } = useWriteContract();
   const { sendTransactionAsync } = useSendTransaction();
 
-  const [tokenAddress, setTokenAddress] = useState("");
+  const [tokens, setTokens] = useState<TokenBalance[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState("");
   const [amount, setAmount] = useState("");
-  const [meta, setMeta] = useState<TokenMeta | null>(null);
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [hash, setHash] = useState<`0x${string}` | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const validToken = isAddress(tokenAddress);
+  const selectedToken = useMemo(
+    () => tokens.find((token) => token.address === selectedAddress) ?? null,
+    [selectedAddress, tokens],
+  );
+
   const sellAmount = useMemo(() => {
-    if (!meta || !amount || Number(amount) <= 0) return null;
+    if (!selectedToken || !amount || Number(amount) <= 0) return null;
     try {
-      return parseUnits(amount, meta.decimals);
+      return parseUnits(amount, selectedToken.decimals);
     } catch {
       return null;
     }
-  }, [amount, meta]);
+  }, [amount, selectedToken]);
 
   const expectedEth = quote
     ? `${Number(formatUnits(BigInt(quote.buyAmount), 18)).toFixed(6)} ETH`
-    : "--";
+    : "0";
 
-  async function loadTokenMeta() {
-    if (!validToken || !publicClient) return null;
+  const loadTokens = useCallback(async () => {
+    if (!address) return;
+    setStatus("loading");
+    setError(null);
 
-    const token = tokenAddress.toLowerCase() as `0x${string}`;
-    const [decimals, symbol] = await Promise.all([
-      publicClient.readContract({
-        address: token,
-        abi: erc20Abi,
-        functionName: "decimals",
-      }),
-      publicClient.readContract({
-        address: token,
-        abi: erc20Abi,
-        functionName: "symbol",
-      }),
-    ]);
+    try {
+      const res = await fetch(
+        `/api/scan?address=${address}&threshold=1000000000&swaps=false`,
+      );
+      const data = (await res.json()) as ScanResponse;
+      if (!res.ok) throw new Error(data.error ?? "Token scan failed");
 
-    const next = {
-      decimals: Number(decimals),
-      symbol: String(symbol),
-    };
-    setMeta(next);
-    return next;
-  }
+      const parsed = data.tokens
+        .map((token) => ({ ...token, balance: BigInt(token.balance) }))
+        .filter((token) => !token.isNative && !token.isScam);
+
+      setTokens(parsed);
+      setSelectedAddress((current) => current || parsed[0]?.address || "");
+      setStatus("idle");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "Token scan failed");
+    }
+  }, [address]);
+
+  useEffect(() => {
+    if (!address) return;
+    const timeout = window.setTimeout(() => {
+      void loadTokens();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [address, loadTokens]);
 
   async function fetchQuote() {
-    if (!address) return;
+    if (!address || !selectedToken || !sellAmount) return;
     setError(null);
     setHash(null);
     setQuote(null);
-    setStatus("loading");
+    setStatus("quoting");
 
     try {
-      const tokenMeta = meta ?? (await loadTokenMeta());
-      if (!tokenMeta) throw new Error("Enter a valid ERC-20 token address.");
-
-      const parsedAmount = parseUnits(amount, tokenMeta.decimals);
-      if (parsedAmount <= 0n) throw new Error("Enter a token amount.");
-
       const res = await fetch(
-        `/api/quote?sellToken=${tokenAddress}&sellAmount=${parsedAmount.toString()}&taker=${address}`,
+        `/api/quote?sellToken=${selectedToken.address}&sellAmount=${sellAmount.toString()}&taker=${address}`,
       );
       const data = (await res.json()) as SwapQuote & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "No quote available");
@@ -102,7 +113,9 @@ export function SwapPanel() {
   }
 
   async function executeSwap() {
-    if (!address || !publicClient || !quote || !sellAmount) return;
+    if (!address || !publicClient || !quote || !sellAmount || !selectedToken) {
+      return;
+    }
     setError(null);
 
     try {
@@ -111,11 +124,9 @@ export function SwapPanel() {
         return;
       }
 
-      const token = tokenAddress.toLowerCase() as `0x${string}`;
-
       if (quote.allowanceTarget) {
         const allowance = await publicClient.readContract({
-          address: token,
+          address: selectedToken.address,
           abi: erc20Abi,
           functionName: "allowance",
           args: [address, quote.allowanceTarget],
@@ -124,7 +135,7 @@ export function SwapPanel() {
         if (allowance < sellAmount) {
           setStatus("approving");
           const approveHash = await writeContractAsync({
-            address: token,
+            address: selectedToken.address,
             abi: erc20Abi,
             functionName: "approve",
             args: [quote.allowanceTarget, sellAmount],
@@ -142,6 +153,7 @@ export function SwapPanel() {
       setHash(txHash);
       await publicClient.waitForTransactionReceipt({ hash: txHash });
       setStatus("done");
+      await loadTokens();
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Swap failed");
@@ -159,50 +171,73 @@ export function SwapPanel() {
   }
 
   return (
-    <section className="flex flex-col gap-5 rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/90 p-5">
-      <div>
-        <h2 className="font-serif text-2xl italic text-[#e8e4dc]">
-          Swap to ETH
-        </h2>
-        <p className="mt-2 text-sm text-[#a8b0a4]">
-          Swap any sellable ERC-20 token on Base into ETH. DustLift fee is
-          included through the 0x quote.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-[1.5fr_1fr]">
-        <label className="flex flex-col gap-2">
-          <span className="text-sm text-[#8a9a8c]">Token contract</span>
-          <input
-            value={tokenAddress}
-            onChange={(e) => {
-              setTokenAddress(e.target.value.trim());
-              setMeta(null);
-              setQuote(null);
-            }}
-            placeholder="0x..."
-            className="rounded-xl border border-[#3d4a3f] bg-[#101611] px-4 py-3 text-[#e8e4dc] outline-none focus:border-[#6b8f71]"
-          />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm text-[#8a9a8c]">Amount</span>
+    <section className="mx-auto flex w-full max-w-xl flex-col gap-4">
+      <div className="rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/95 p-4">
+        <label className="text-sm text-[#8a9a8c]">Sell</label>
+        <div className="mt-2 flex items-center gap-3">
           <input
             value={amount}
-            onChange={(e) => {
-              setAmount(e.target.value);
+            onChange={(event) => {
+              setAmount(event.target.value);
               setQuote(null);
             }}
             inputMode="decimal"
-            placeholder="0.0"
-            className="rounded-xl border border-[#3d4a3f] bg-[#101611] px-4 py-3 text-[#e8e4dc] outline-none focus:border-[#6b8f71]"
+            placeholder="0"
+            className="min-w-0 flex-1 bg-transparent text-4xl text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
           />
-        </label>
+          <div className="flex flex-col items-end gap-2">
+            <select
+              value={selectedAddress}
+              onChange={(event) => {
+                setSelectedAddress(event.target.value);
+                setAmount("");
+                setQuote(null);
+              }}
+              className="max-w-40 rounded-full border border-[#3d4a3f] bg-[#1a211c] px-3 py-2 text-sm font-semibold text-[#e8e4dc] outline-none"
+            >
+              {tokens.length === 0 ? (
+                <option value="">Select token</option>
+              ) : (
+                tokens.map((token) => (
+                  <option key={token.address} value={token.address}>
+                    {token.symbol}
+                  </option>
+                ))
+              )}
+            </select>
+            {selectedToken && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAmount(formatUnits(selectedToken.balance, selectedToken.decimals));
+                  setQuote(null);
+                }}
+                className="text-xs text-[#6b8f71] hover:underline"
+              >
+                Max {formatTokenAmount(selectedToken.balance, selectedToken.decimals, 4)}
+              </button>
+            )}
+          </div>
+        </div>
+        {selectedToken && (
+          <p className="mt-2 text-xs text-[#6b7a6d]">
+            {selectedToken.name} - {formatUsd(selectedToken.usdValue)}
+          </p>
+        )}
       </div>
 
-      <div className="grid gap-3 text-sm sm:grid-cols-3">
-        <Info label="Token" value={meta?.symbol ?? (validToken ? "Ready" : "--")} />
-        <Info label="Expected ETH" value={expectedEth} />
-        <Info label="Route" value="0x on Base" />
+      <div className="mx-auto -my-1 flex size-11 items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#101611] text-2xl text-[#e8e4dc]">
+        v
+      </div>
+
+      <div className="rounded-2xl border border-[#2a332c]/80 bg-[#101611]/95 p-4">
+        <label className="text-sm text-[#8a9a8c]">Buy</label>
+        <div className="mt-2 flex items-center gap-3">
+          <p className="min-w-0 flex-1 text-4xl text-[#e8e4dc]">{expectedEth}</p>
+          <div className="rounded-full border border-[#3d4a3f] bg-[#1a211c] px-4 py-2 text-sm font-semibold text-[#e8e4dc]">
+            ETH
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -222,24 +257,32 @@ export function SwapPanel() {
         </a>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="grid gap-3 sm:grid-cols-2">
         <button
           type="button"
-          onClick={fetchQuote}
-          disabled={!validToken || !amount || status === "loading"}
-          className="rounded-xl border border-[#6b8f71]/50 px-5 py-3 text-sm font-semibold text-[#c5cdc6] hover:bg-[#1a211c] disabled:opacity-50"
+          onClick={tokens.length === 0 ? loadTokens : fetchQuote}
+          disabled={
+            status === "loading" ||
+            status === "quoting" ||
+            (tokens.length > 0 && (!selectedToken || !sellAmount))
+          }
+          className="rounded-2xl border border-[#6b8f71]/50 px-5 py-4 text-sm font-semibold text-[#c5cdc6] hover:bg-[#1a211c] disabled:opacity-50"
         >
-          {status === "loading" ? "Getting quote..." : "Get quote"}
+          {status === "loading" && "Loading tokens..."}
+          {status === "quoting" && "Getting quote..."}
+          {status !== "loading" &&
+            status !== "quoting" &&
+            (tokens.length === 0 ? "Load wallet tokens" : "Get quote")}
         </button>
         <button
           type="button"
           onClick={executeSwap}
           disabled={!quote || status === "approving" || status === "swapping"}
-          className="rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white disabled:opacity-50"
+          className="rounded-2xl bg-[#e8e4dc] px-5 py-4 text-sm font-semibold text-[#0f1410] transition hover:bg-white disabled:opacity-50"
         >
           {status === "approving" && "Approving..."}
           {status === "swapping" && "Swapping..."}
-          {status !== "approving" && status !== "swapping" && "Swap to ETH"}
+          {status !== "approving" && status !== "swapping" && "Start"}
         </button>
       </div>
 
@@ -249,14 +292,5 @@ export function SwapPanel() {
         </p>
       )}
     </section>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-[#2a332c] bg-[#101611] px-4 py-3">
-      <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">{label}</p>
-      <p className="mt-1 text-[#c5cdc6]">{value}</p>
-    </div>
   );
 }
