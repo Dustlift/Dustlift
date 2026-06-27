@@ -1,17 +1,17 @@
-# Base Dust Sweep
+﻿# Base DustLift
 
 Titan-style wallet cleanup for **Base**: scan ERC-20 dust and scam tokens, batch-convert to ETH, revoke approvals, and earn integrator fees.
 
 ## Features
 
-- **Wallet scan** — Blockscout token balances + DefiLlama USD pricing
-- **Dust filter** — configurable USD threshold (default $5)
-- **Scam detection** — Blockscout flags + curated deny list + hide/report
-- **Smart filter** — 0x liquidity check; skips honeypots and unprofitable swaps
-- **Batch sweep** — EIP-5792 `wallet_sendCalls` when supported (Coinbase Smart Wallet, Base App)
-- **Sequential fallback** — works in any wallet if batch is unavailable
-- **Approval revoke** — scan & revoke via Blockscout + Revoke.cash link
-- **Creator commission** — 0x integrator fee (`swapFeeRecipient`) on every swap
+- **Wallet scan** â€” Blockscout token balances + DefiLlama USD pricing
+- **Dust filter** â€” configurable USD threshold (default $5)
+- **Scam detection** â€” Blockscout flags + curated deny list + hide/report
+- **Smart filter** â€” 0x liquidity check; skips honeypots and unprofitable swaps
+- **Batch sweep** â€” EIP-5792 `wallet_sendCalls` when supported (Coinbase Smart Wallet, Base App)
+- **Sequential fallback** â€” works in any wallet if batch is unavailable
+- **Approval revoke** â€” scan & revoke via Blockscout + Revoke.cash link
+- **Creator commission** â€” 0x integrator fee (`swapFeeRecipient`) on every swap
 
 ## Setup
 
@@ -25,8 +25,8 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect (external browsers) |
 | `NEXT_PUBLIC_APP_URL` | Production URL for OG tags & Base.dev |
 | `ZEROX_API_KEY` | Swap quotes & execution |
-| `FEE_RECIPIENT` | Your wallet — receives commission (server) |
-| `NEXT_PUBLIC_FEE_RECIPIENT` | Same wallet — shown in UI |
+| `FEE_RECIPIENT` | Your wallet â€” receives commission (server) |
+| `NEXT_PUBLIC_FEE_RECIPIENT` | Same wallet â€” shown in UI |
 | `FEE_BPS` | Fee rate in basis points (75 = 0.75%) |
 
 ```bash
@@ -37,27 +37,27 @@ npm run dev
 
 Each swap quote includes 0x integrator parameters:
 
-- `swapFeeRecipient` → your creator wallet
-- `swapFeeBps` → e.g. 75 (0.75%)
-- `swapFeeToken` → ETH (deducted from swap output)
+- `swapFeeRecipient` â†’ your creator wallet
+- `swapFeeBps` â†’ e.g. 75 (0.75%)
+- `swapFeeToken` â†’ ETH (deducted from swap output)
 
-Fees are collected on-chain automatically by 0x at settlement — no custom smart contract needed.
+Fees are collected on-chain automatically by 0x at settlement â€” no custom smart contract needed.
 
 ## Deploy to Vercel
 
 1. Push repo to GitHub
-2. Import in [Vercel](https://vercel.com) → Framework: Next.js
+2. Import in [Vercel](https://vercel.com) â†’ Framework: Next.js
 3. Set all env vars from `.env.example`
-4. Deploy — copy production URL into `NEXT_PUBLIC_APP_URL` and redeploy
+4. Deploy â€” copy production URL into `NEXT_PUBLIC_APP_URL` and redeploy
 
 ## Publish on Base App (base.dev)
 
 Base App now uses **standard web apps** (no Farcaster manifest required).
 
-1. Go to [base.dev](https://base.dev) → create a project
+1. Go to [base.dev](https://base.dev) â†’ create a project
 2. Complete metadata:
-   - **Name:** Base Dust Sweep
-   - **Tagline:** Convert dust tokens to ETH on Base
+   - **Name:** Base DustLift
+   - **Tagline:** Turn wallet dust into ETH on Base
    - **Category:** DeFi
    - **Primary URL:** your Vercel URL (`NEXT_PUBLIC_APP_URL`)
    - **Icon & screenshots:** upload from `/public`
@@ -71,18 +71,18 @@ Checklist: [Base App migration guide](https://docs.base.org/apps/guides/migrate-
 
 ```
 User wallet (Base App / MetaMask / Coinbase Wallet)
-       │
-       ▼
-┌──────────────────┐     Blockscout          ┌─────────────┐
-│  Next.js frontend │ ◄────────────────────── │ Tokens +    │
-│  wagmi + viem     │                         │ Approvals   │
-└────────┬─────────┘                         └─────────────┘
-         │
-         ▼
-┌──────────────────┐     0x Swap API         ┌─────────────┐
-│  /api/scan       │     + integrator fee    │ ETH output  │
-│  /api/batch-quote│ ──────────────────────► │ + commission│
-└──────────────────┘                         └─────────────┘
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     Blockscout          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Next.js frontend â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚ Tokens +    â”‚
+â”‚  wagmi + viem     â”‚                         â”‚ Approvals   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+         â”‚
+         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     0x Swap API         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  /api/scan       â”‚     + integrator fee    â”‚ ETH output  â”‚
+â”‚  /api/batch-quoteâ”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚ + commissionâ”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ## Roadmap (done)
@@ -96,3 +96,4 @@ User wallet (Base App / MetaMask / Coinbase Wallet)
 ## Disclaimer
 
 This tool executes real on-chain swaps. Always review transactions in your wallet. Not financial advice.
+

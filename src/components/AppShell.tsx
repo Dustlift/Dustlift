@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -15,10 +15,10 @@ export function AppShell() {
       <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-[#8a9a8c]">
-            Base Network · Base App ready
+            Base Network Â· Base App ready
           </p>
           <h1 className="font-serif text-4xl italic text-[#e8e4dc]">
-            Dust Sweep
+            DustLift
           </h1>
           <p className="mt-2 max-w-md text-[#a8b0a4]">
             Scan dust &amp; scam leftovers, batch-convert to ETH, revoke stale
@@ -31,7 +31,7 @@ export function AppShell() {
       <nav className="flex gap-2 rounded-xl border border-[#3d4a3f]/60 bg-[#141a16]/80 p-1">
         {(
           [
-            ["dust", "Dust → ETH"],
+            ["dust", "Dust â†’ ETH"],
             ["approvals", "Approvals"],
           ] as const
         ).map(([id, label]) => (
@@ -54,3 +54,4 @@ export function AppShell() {
     </div>
   );
 }
+

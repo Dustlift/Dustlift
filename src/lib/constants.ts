@@ -25,6 +25,6 @@ export const REVOKE_CASH_BASE = "https://revoke.cash/address";
 /** Default integrator fee: 75 bps = 0.75% */
 export const DEFAULT_FEE_BPS = 75;
 
-export const APP_NAME = "Base Dust Sweep";
-export const APP_TAGLINE = "Convert dust tokens to ETH on Base";
+export const APP_NAME = "DustLift";
+export const APP_TAGLINE = "Turn wallet dust into ETH on Base";
 export const APP_CATEGORY = "DeFi";

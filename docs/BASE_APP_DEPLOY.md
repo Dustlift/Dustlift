@@ -1,8 +1,8 @@
-# Base App Deployment Guide
+﻿# Base App Deployment Guide
 
 ## 1. Environment variables (production)
 
-Set these in Vercel → Settings → Environment Variables:
+Set these in Vercel â†’ Settings â†’ Environment Variables:
 
 ```
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...
@@ -29,17 +29,17 @@ After first deploy, update `NEXT_PUBLIC_APP_URL` to the real domain and redeploy
 ## 3. Register on Base.dev
 
 1. Visit https://base.dev
-2. Create account → New Project
+2. Create account â†’ New Project
 3. Fill metadata:
    | Field | Value |
    |---|---|
-   | Name | Base Dust Sweep |
-   | Tagline | Convert dust tokens to ETH on Base |
+   | Name | Base DustLift |
+   | Tagline | Turn wallet dust into ETH on Base |
    | Description | Scan wallet for dust & scam tokens, batch-convert to ETH, revoke approvals |
    | Category | DeFi |
    | Primary URL | Your Vercel URL |
-   | Icon | 1024×1024 PNG (add to `/public/icon.png`) |
-   | Screenshots | 2–3 mobile screenshots of the app |
+   | Icon | 1024Ã—1024 PNG (add to `/public/icon.png`) |
+   | Screenshots | 2â€“3 mobile screenshots of the app |
 
 4. Add your **builder code** so users can find the app
 5. Submit for discovery (if review is required)
@@ -49,11 +49,11 @@ After first deploy, update `NEXT_PUBLIC_APP_URL` to the real domain and redeploy
 1. Open Base App on mobile
 2. Navigate to your app URL or search by name
 3. Connect wallet (injected provider works automatically)
-4. Run a small test sweep with 1–2 dust tokens
+4. Run a small test sweep with 1â€“2 dust tokens
 
 ## 5. Commission verification
 
-After a test swap, check your creator wallet on [BaseScan](https://basescan.org) for incoming ETH from the 0x settlement. Fee amount ≈ `FEE_BPS / 10000 × swap output`.
+After a test swap, check your creator wallet on [BaseScan](https://basescan.org) for incoming ETH from the 0x settlement. Fee amount â‰ˆ `FEE_BPS / 10000 Ã— swap output`.
 
 ## 6. Add known scam tokens
 
@@ -69,3 +69,4 @@ Edit `src/data/known-scams-base.json`:
 ```
 
 Redeploy after updating the list.
+
