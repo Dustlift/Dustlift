@@ -5,16 +5,18 @@ import type { SwapQuote } from "./types";
 
 type QuoteParams = {
   sellToken: string;
+  buyToken?: string;
   sellAmount: string;
   takerAddress: string;
   slippageBps?: number;
 };
 
 function buildSearchParams(params: QuoteParams): URLSearchParams {
+  const buyToken = params.buyToken ?? ETH_ADDRESS;
   const search = new URLSearchParams({
     chainId: String(BASE_CHAIN_ID),
     sellToken: params.sellToken,
-    buyToken: ETH_ADDRESS,
+    buyToken,
     sellAmount: params.sellAmount,
     taker: params.takerAddress,
     slippageBps: String(params.slippageBps ?? 100),
@@ -24,7 +26,7 @@ function buildSearchParams(params: QuoteParams): URLSearchParams {
   if (fee.enabled && fee.recipient) {
     search.set("swapFeeRecipient", fee.recipient);
     search.set("swapFeeBps", String(fee.bps));
-    search.set("swapFeeToken", ETH_ADDRESS);
+    search.set("swapFeeToken", buyToken);
   }
 
   return search;
@@ -42,7 +44,14 @@ function asHex(value: unknown): `0x${string}` | undefined {
     : undefined;
 }
 
-function parseQuoteResponse(data: Record<string, unknown>): SwapQuote | null {
+function sameAddress(a: string | undefined, b: string): boolean {
+  return a?.toLowerCase() === b.toLowerCase();
+}
+
+function parseQuoteResponse(
+  data: Record<string, unknown>,
+  params: QuoteParams,
+): SwapQuote | null {
   if (data.liquidityAvailable === false) return null;
 
   const tx = data.transaction as Record<string, unknown> | undefined;
@@ -57,6 +66,14 @@ function parseQuoteResponse(data: Record<string, unknown>): SwapQuote | null {
   const txData = asHex(tx?.data);
   if (!to || !txData) return null;
 
+  const sellsNativeEth = sameAddress(params.sellToken, ETH_ADDRESS);
+  const allowanceTarget =
+    asAddress(data.allowanceTarget) ??
+    asAddress(data.allowance_target) ??
+    asAddress(data.allowanceTargetAddress) ??
+    asAddress(allowance?.spender) ??
+    (!sellsNativeEth ? to : undefined);
+
   return {
     buyAmount: String(data.buyAmount ?? "0"),
     sellAmount: String(data.sellAmount ?? "0"),
@@ -64,8 +81,7 @@ function parseQuoteResponse(data: Record<string, unknown>): SwapQuote | null {
     to,
     data: txData,
     value: tx?.value != null ? String(tx.value) : "0",
-    allowanceTarget:
-      asAddress(data.allowanceTarget) ?? asAddress(allowance?.spender),
+    allowanceTarget,
     feeAmount: integratorFee?.amount,
   };
 }
@@ -91,7 +107,7 @@ export async function fetchSwapQuote(
   if (!res.ok) return null;
 
   const data = (await res.json()) as Record<string, unknown>;
-  return parseQuoteResponse(data);
+  return parseQuoteResponse(data, params);
 }
 
 export async function fetchSwapPrice(params: QuoteParams): Promise<{

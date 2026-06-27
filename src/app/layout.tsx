@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Playfair_Display } from "next/font/google";
+import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import "./globals.css";
@@ -25,9 +24,9 @@ const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ?? "https://base-dust-sweep.vercel.app";
 
 export const metadata: Metadata = {
-  title: `${APP_NAME} — ${APP_TAGLINE}`,
+  title: `${APP_NAME} - ${APP_TAGLINE}`,
   description:
-    "Scan Base wallet dust and scam tokens, batch-convert to ETH, revoke approvals. Built for Base App.",
+    "Scan Base wallet dust and scam tokens, batch-convert to ETH, swap assets, and view Base activity rank.",
   metadataBase: new URL(appUrl),
   openGraph: {
     title: APP_NAME,
@@ -59,7 +58,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -1,19 +1,22 @@
-﻿# Base App Deployment Guide
+# Base App Deployment Guide
 
-## 1. Environment variables (production)
+## 1. Environment Variables
 
-Set these in Vercel â†’ Settings â†’ Environment Variables:
+Set these in Vercel -> Settings -> Environment Variables:
 
-```
+```bash
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...
 NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
 ZEROX_API_KEY=...
 FEE_RECIPIENT=0xYourWallet
 NEXT_PUBLIC_FEE_RECIPIENT=0xYourWallet
 FEE_BPS=75
+DUNE_API_KEY=
+DUNE_BASE_ACTIVITY_QUERY_ID=
+DUNE_BASE_ACTIVITY_LIMIT=1000
 ```
 
-**Important:** `FEE_RECIPIENT` must be your creator wallet. Fees arrive in ETH automatically on each successful swap.
+`DUNE_API_KEY` and `DUNE_BASE_ACTIVITY_QUERY_ID` are optional. Without them, the activity panel still shows local Base wallet activity from Blockscout.
 
 ## 2. Deploy
 
@@ -22,51 +25,50 @@ npm install --legacy-peer-deps
 npm run build
 ```
 
-Or connect GitHub repo to Vercel (uses `vercel.json` with `--legacy-peer-deps`).
+Or connect the GitHub repo to Vercel. After first deploy, update `NEXT_PUBLIC_APP_URL` to the real domain and redeploy.
 
-After first deploy, update `NEXT_PUBLIC_APP_URL` to the real domain and redeploy.
-
-## 3. Register on Base.dev
+## 3. Register On Base.dev
 
 1. Visit https://base.dev
-2. Create account â†’ New Project
+2. Create account -> New Project
 3. Fill metadata:
-   | Field | Value |
-   |---|---|
-   | Name | Base DustLift |
-   | Tagline | Turn wallet dust into ETH on Base |
-   | Description | Scan wallet for dust & scam tokens, batch-convert to ETH, revoke approvals |
-   | Category | DeFi |
-   | Primary URL | Your Vercel URL |
-   | Icon | 1024Ã—1024 PNG (add to `/public/icon.png`) |
-   | Screenshots | 2â€“3 mobile screenshots of the app |
 
-4. Add your **builder code** so users can find the app
-5. Submit for discovery (if review is required)
+| Field | Value |
+|---|---|
+| Name | DustLift |
+| Tagline | Turn wallet dust into ETH on Base |
+| Description | Scan wallet dust, batch-convert sellable tokens to ETH, swap Base assets, and view activity rank |
+| Category | DeFi |
+| Primary URL | Your Vercel URL |
+| Icon | 1024x1024 PNG |
+| Screenshots | 2-3 mobile screenshots |
 
-## 4. Test in Base App
+4. Add your builder code when available.
+5. Submit for discovery if review is required.
 
-1. Open Base App on mobile
-2. Navigate to your app URL or search by name
-3. Connect wallet (injected provider works automatically)
-4. Run a small test sweep with 1â€“2 dust tokens
+## 4. Test In Base App
 
-## 5. Commission verification
+1. Open Base App on mobile.
+2. Navigate to your app URL or search by name.
+3. Connect wallet.
+4. Run a tiny ETH -> USDC swap.
+5. Run a tiny dust -> ETH sweep if sellable dust is found.
 
-After a test swap, check your creator wallet on [BaseScan](https://basescan.org) for incoming ETH from the 0x settlement. Fee amount â‰ˆ `FEE_BPS / 10000 Ã— swap output`.
+## 5. Commission Verification
 
-## 6. Add known scam tokens
+After a test swap, check your creator wallet on BaseScan for incoming 0x settlement fee. Fee amount is approximately `FEE_BPS / 10000 * swap output`.
 
-Edit `src/data/known-scams-base.json`:
+## 6. Dune Activity Query
 
-```json
-[
-  {
-    "address": "0xScamTokenAddress",
-    "reason": "Phishing airdrop token"
-  }
-]
-```
+For global rank, create or reuse a Dune query whose latest result rows include wallet-level Base activity. Recommended columns:
 
-Redeploy after updating the list.
+- `wallet`
+- `rank`
+- `score`
+- `tx_count`
+- `active_days`
+- `active_wallets`
+- `total_wallets`
+- `guild_tasks`
 
+Add the query id to `DUNE_BASE_ACTIVITY_QUERY_ID` in Vercel.

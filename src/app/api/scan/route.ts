@@ -114,16 +114,12 @@ async function markSwappableTokens(
         };
       }
 
-      const ethOut = Number(price.buyAmount) / 1e18;
-      const gasEth = (Number(price.estimatedGas) * 0.01) / 1e9;
-      const profitable = ethOut > gasEth * 2;
+      const hasOutput = BigInt(price.buyAmount || "0") > 0n;
 
       return {
         ...token,
-        isSwappable: profitable,
-        swapBlockedReason: profitable
-          ? undefined
-          : "Swap value lower than estimated gas",
+        isSwappable: hasOutput,
+        swapBlockedReason: hasOutput ? undefined : "No usable swap output",
       };
     }),
   );

@@ -3,6 +3,7 @@ import { fetchSwapQuote } from "@/lib/swap";
 
 export async function GET(request: NextRequest) {
   const sellToken = request.nextUrl.searchParams.get("sellToken");
+  const buyToken = request.nextUrl.searchParams.get("buyToken");
   const sellAmount = request.nextUrl.searchParams.get("sellAmount");
   const taker = request.nextUrl.searchParams.get("taker");
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 
   const quote = await fetchSwapQuote({
     sellToken,
+    buyToken: buyToken ?? undefined,
     sellAmount,
     takerAddress: taker,
   });

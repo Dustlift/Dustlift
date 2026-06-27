@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { DustScanner } from "@/components/DustScanner";
-import { ApprovalPanel } from "@/components/ApprovalPanel";
+import { ActivityPanel } from "@/components/ActivityPanel";
 import { BuilderActivatePanel } from "@/components/BuilderActivatePanel";
 import { SwapPanel } from "@/components/SwapPanel";
 import { WalletStatus } from "@/components/WalletStatus";
 
-type Tab = "dust" | "swap" | "builder" | "approvals";
+type Tab = "dust" | "swap" | "builder";
 
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("dust");
@@ -23,8 +23,8 @@ export function AppShell() {
             DustLift
           </h1>
           <p className="mt-2 max-w-md text-[#a8b0a4]">
-            Scan dust &amp; scam leftovers, batch-convert to ETH, revoke stale
-            approvals.
+            Scan dust &amp; scam leftovers, batch-convert to ETH, and swap Base
+            assets.
           </p>
         </div>
         <WalletStatus />
@@ -36,7 +36,6 @@ export function AppShell() {
             ["dust", "Dust -> ETH"],
             ["swap", "Swap"],
             ["builder", "Builder"],
-            ["approvals", "Approvals"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -57,7 +56,7 @@ export function AppShell() {
       {tab === "dust" && <DustScanner />}
       {tab === "swap" && <SwapPanel />}
       {tab === "builder" && <BuilderActivatePanel />}
-      {tab === "approvals" && <ApprovalPanel />}
+      <ActivityPanel />
     </div>
   );
 }

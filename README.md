@@ -1,99 +1,82 @@
-﻿# Base DustLift
+# DustLift
 
-Titan-style wallet cleanup for **Base**: scan ERC-20 dust and scam tokens, batch-convert to ETH, revoke approvals, and earn integrator fees.
+Wallet cleanup and swap assistant for Base: scan ERC-20 dust and scam leftovers, batch-convert sellable dust to ETH, swap Base assets, and view wallet activity rank.
 
 ## Features
 
-- **Wallet scan** â€” Blockscout token balances + DefiLlama USD pricing
-- **Dust filter** â€” configurable USD threshold (default $5)
-- **Scam detection** â€” Blockscout flags + curated deny list + hide/report
-- **Smart filter** â€” 0x liquidity check; skips honeypots and unprofitable swaps
-- **Batch sweep** â€” EIP-5792 `wallet_sendCalls` when supported (Coinbase Smart Wallet, Base App)
-- **Sequential fallback** â€” works in any wallet if batch is unavailable
-- **Approval revoke** â€” scan & revoke via Blockscout + Revoke.cash link
-- **Creator commission** â€” 0x integrator fee (`swapFeeRecipient`) on every swap
+- Wallet scan: Blockscout token balances + DefiLlama USD pricing
+- Dust filter: configurable USD threshold
+- Scam filtering: Blockscout flags + curated deny list + hide/report
+- Sellability check: 0x liquidity check; skips tokens with no usable output
+- Batch sweep: EIP-5792 `wallet_sendCalls` when supported
+- Sequential fallback: works in wallets without batch support
+- Swap: ETH to token and token to ETH via 0x
+- Creator commission: 0x integrator fee on successful swaps
+- Base activity: local Base wallet activity plus optional Dune leaderboard data
 
 ## Setup
 
 ```bash
 npm install --legacy-peer-deps
 cp .env.example .env.local
+npm run dev
 ```
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect (external browsers) |
-| `NEXT_PUBLIC_APP_URL` | Production URL for OG tags & Base.dev |
-| `ZEROX_API_KEY` | Swap quotes & execution |
-| `FEE_RECIPIENT` | Your wallet â€” receives commission (server) |
-| `NEXT_PUBLIC_FEE_RECIPIENT` | Same wallet â€” shown in UI |
-| `FEE_BPS` | Fee rate in basis points (75 = 0.75%) |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect for external browsers |
+| `NEXT_PUBLIC_APP_URL` | Production URL for OG tags and Base.dev |
+| `ZEROX_API_KEY` | 0x quotes and swap execution |
+| `FEE_RECIPIENT` | Creator wallet, server-side fee recipient |
+| `NEXT_PUBLIC_FEE_RECIPIENT` | Same creator wallet, shown in UI |
+| `FEE_BPS` | Fee rate in basis points, 75 = 0.75% |
+| `DUNE_API_KEY` | Optional Dune API key for activity leaderboard |
+| `DUNE_BASE_ACTIVITY_QUERY_ID` | Optional Dune query id for Base activity rank |
+| `DUNE_BASE_ACTIVITY_LIMIT` | Optional latest-result row limit, default 1000 |
 
-```bash
-npm run dev
-```
+## Commission Model
 
-## Commission model
+Each 0x quote includes integrator parameters:
 
-Each swap quote includes 0x integrator parameters:
+- `swapFeeRecipient`: creator wallet
+- `swapFeeBps`: fee rate
+- `swapFeeToken`: swap output token
 
-- `swapFeeRecipient` â†’ your creator wallet
-- `swapFeeBps` â†’ e.g. 75 (0.75%)
-- `swapFeeToken` â†’ ETH (deducted from swap output)
+Fees are collected on-chain by 0x at settlement. No custom smart contract is required.
 
-Fees are collected on-chain automatically by 0x at settlement â€” no custom smart contract needed.
+## Dune Activity Query
 
-## Deploy to Vercel
+The activity panel works without Dune by showing local Base wallet data from Blockscout. For global rank, add a Dune query whose latest results include wallet rows with flexible column names such as:
 
-1. Push repo to GitHub
-2. Import in [Vercel](https://vercel.com) â†’ Framework: Next.js
-3. Set all env vars from `.env.example`
-4. Deploy â€” copy production URL into `NEXT_PUBLIC_APP_URL` and redeploy
+- `wallet` or `address`
+- `rank` or `activity_rank`
+- `score` or `activity_score`
+- `tx_count`
+- `active_days`
+- `active_wallets`
+- `total_wallets`
+- `guild_tasks` or `guild_score`
 
-## Publish on Base App (base.dev)
+Then add `DUNE_API_KEY` and `DUNE_BASE_ACTIVITY_QUERY_ID` in Vercel.
 
-Base App now uses **standard web apps** (no Farcaster manifest required).
+## Deploy To Vercel
 
-1. Go to [base.dev](https://base.dev) â†’ create a project
-2. Complete metadata:
-   - **Name:** Base DustLift
-   - **Tagline:** Turn wallet dust into ETH on Base
-   - **Category:** DeFi
-   - **Primary URL:** your Vercel URL (`NEXT_PUBLIC_APP_URL`)
-   - **Icon & screenshots:** upload from `/public`
-   - **Builder code:** from your Base.dev profile
-3. App works in Base App in-app browser via `injected` + `@base-org/account` wallet connectors
-4. Users discover your app through Base.dev search & builder code
+1. Push repo to GitHub.
+2. Import in Vercel as a Next.js project.
+3. Set all env vars from `.env.example`.
+4. Deploy, copy the production URL into `NEXT_PUBLIC_APP_URL`, and redeploy.
 
-Checklist: [Base App migration guide](https://docs.base.org/apps/guides/migrate-to-standard-web-app)
+## Publish On Base App
 
-## Architecture
-
-```
-User wallet (Base App / MetaMask / Coinbase Wallet)
-       â”‚
-       â–¼
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     Blockscout          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  Next.js frontend â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚ Tokens +    â”‚
-â”‚  wagmi + viem     â”‚                         â”‚ Approvals   â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-         â”‚
-         â–¼
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     0x Swap API         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  /api/scan       â”‚     + integrator fee    â”‚ ETH output  â”‚
-â”‚  /api/batch-quoteâ”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚ + commissionâ”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-```
-
-## Roadmap (done)
-
-- [x] Batch swaps via EIP-5792 with sequential fallback
-- [x] Scam token list + hide/report
-- [x] Approval scan + revoke
-- [x] 0x integrator commission
-- [x] Base App wallet connectors
+1. Go to `base.dev` and create a project.
+2. Use:
+   - Name: DustLift
+   - Tagline: Turn wallet dust into ETH on Base
+   - Category: DeFi
+   - Primary URL: your Vercel URL
+3. Upload icon and screenshots.
+4. Add builder code when the Base.dev project is ready.
 
 ## Disclaimer
 
-This tool executes real on-chain swaps. Always review transactions in your wallet. Not financial advice.
-
+This tool executes real on-chain swaps. Always review wallet prompts before signing. Not financial advice.
