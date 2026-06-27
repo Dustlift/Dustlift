@@ -12,10 +12,14 @@ type BlockscoutTransaction = {
 type DuneRow = Record<string, unknown>;
 
 const NUMBER_KEYS = {
-  rank: ["rank", "activity_rank", "wallet_rank", "base_rank"],
+  rank: ["rank_tx", "rank", "activity_rank", "wallet_rank", "base_rank"],
   score: ["score", "activity_score", "builder_score", "base_score"],
   txCount: ["tx_count", "transactions", "total_tx", "txs", "base_tx_count"],
+  nativeVolumeEth: ["native_volume_eth", "native_volume", "volume_eth"],
+  contractCount: ["contract_count", "contracts", "unique_contracts"],
+  gasFeeEth: ["gasfee_eth", "gas_fee_eth", "gas_spent_eth"],
   activeDays: ["active_days", "days_active", "base_active_days"],
+  activeMonths: ["active_months", "months_active"],
   percentile: ["percentile", "top_percent", "activity_percentile"],
   totalWallets: ["total_wallets", "wallet_count", "base_wallets"],
   activeWallets: ["active_wallets", "active_wallet_count"],
@@ -23,6 +27,8 @@ const NUMBER_KEYS = {
 };
 
 const ADDRESS_KEYS = ["wallet", "address", "user", "account", "tx_from"];
+const GUILD_BASE_URL = "https://guild.xyz/base";
+const GUILD_BASE_API = "https://api.guild.xyz/v2/guilds/base?include=roles";
 
 function readNumber(obj: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
@@ -37,6 +43,18 @@ function readNumber(obj: Record<string, unknown>, keys: string[]): number | null
 }
 
 function readString(obj: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return null;
+}
+
+function readDateString(
+  obj: Record<string, unknown> | null,
+  keys: string[],
+): string | null {
+  if (!obj) return null;
   for (const key of keys) {
     const value = obj[key];
     if (typeof value === "string" && value.trim() !== "") return value;
@@ -66,8 +84,9 @@ export async function GET(request: NextRequest) {
       fetchLocalActivity(address),
       fetchDuneActivity(address),
     ]);
+    const guild = await fetchGuildBadges(dune, local);
 
-    return NextResponse.json({ address, local, dune });
+    return NextResponse.json({ address, local, dune, guild });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Activity lookup failed";
@@ -146,41 +165,77 @@ async function fetchDuneActivity(address: string) {
     };
   }
 
-  const rows = await fetchDuneRows(queryId, apiKey);
   const target = address.toLowerCase();
+  const filteredRow = await fetchDuneRowByAddress(queryId, apiKey, target);
+  const rows = filteredRow ? [] : await fetchDuneRows(queryId, apiKey);
   const row =
+    filteredRow ??
     rows.find((item) =>
       ADDRESS_KEYS.some((key) =>
-        String(item[key] ?? "").toLowerCase().includes(target),
+        String(item[key] ?? "").toLowerCase() === target,
       ),
     ) ?? null;
+
+  const statsRow = row ?? rows[0] ?? {};
 
   return {
     configured: true,
     queryId,
     rowFound: Boolean(row),
+    address: row ? readString(row, ADDRESS_KEYS) : null,
     rank: row ? readNumber(row, NUMBER_KEYS.rank) : null,
     score: row ? readNumber(row, NUMBER_KEYS.score) : null,
     txCount: row ? readNumber(row, NUMBER_KEYS.txCount) : null,
+    nativeVolumeEth: row ? readNumber(row, NUMBER_KEYS.nativeVolumeEth) : null,
+    contractCount: row ? readNumber(row, NUMBER_KEYS.contractCount) : null,
+    gasFeeEth: row ? readNumber(row, NUMBER_KEYS.gasFeeEth) : null,
     activeDays: row ? readNumber(row, NUMBER_KEYS.activeDays) : null,
+    activeMonths: row ? readNumber(row, NUMBER_KEYS.activeMonths) : null,
+    firstActivity: readDateString(row, [
+      "first_activity",
+      "first_seen",
+      "first_tx",
+      "created_at",
+    ]),
     percentile: row ? readNumber(row, NUMBER_KEYS.percentile) : null,
     totalWallets: row
       ? readNumber(row, NUMBER_KEYS.totalWallets)
-      : readNumber(rows[0] ?? {}, NUMBER_KEYS.totalWallets),
+      : readNumber(statsRow, NUMBER_KEYS.totalWallets),
     activeWallets: row
       ? readNumber(row, NUMBER_KEYS.activeWallets)
-      : readNumber(rows[0] ?? {}, NUMBER_KEYS.activeWallets),
+      : readNumber(statsRow, NUMBER_KEYS.activeWallets),
     guildTasks: row ? readNumber(row, NUMBER_KEYS.guildTasks) : null,
     label: row ? readString(row, ["label", "tier", "guild_tier"]) : null,
     lastUpdated: new Date().toISOString(),
   };
 }
 
-async function fetchDuneRows(queryId: string, apiKey: string): Promise<DuneRow[]> {
+async function fetchDuneRowByAddress(
+  queryId: string,
+  apiKey: string,
+  address: string,
+): Promise<DuneRow | null> {
+  for (const key of ADDRESS_KEYS) {
+    const rows = await fetchDuneRows(queryId, apiKey, {
+      limit: 1,
+      filters: `${key} = '${address}'`,
+    });
+    if (rows.length > 0) return rows[0];
+  }
+  return null;
+}
+
+async function fetchDuneRows(
+  queryId: string,
+  apiKey: string,
+  options: { limit?: number; offset?: number; filters?: string } = {},
+): Promise<DuneRow[]> {
   const search = new URLSearchParams({
-    limit: process.env.DUNE_BASE_ACTIVITY_LIMIT ?? "1000",
+    limit: String(options.limit ?? process.env.DUNE_BASE_ACTIVITY_LIMIT ?? "1000"),
     allow_partial_results: "true",
   });
+  if (options.offset != null) search.set("offset", String(options.offset));
+  if (options.filters) search.set("filters", options.filters);
 
   const res = await fetch(
     `https://api.dune.com/api/v1/query/${queryId}/results?${search.toString()}`,
@@ -199,4 +254,127 @@ async function fetchDuneRows(queryId: string, apiKey: string): Promise<DuneRow[]
   };
 
   return data.result?.rows ?? [];
+}
+
+type GuildReward = {
+  id?: string;
+  type?: string;
+  ui?: {
+    displayName?: string;
+    imageUrl?: string;
+    imgUrl?: string;
+  };
+  data?: {
+    roleId?: string;
+  };
+};
+
+type GuildResponse = {
+  name?: string;
+  urlName?: string;
+  memberCount?: number;
+  rewards?: GuildReward[];
+};
+
+type ActivityMetrics = {
+  txCount?: number | null;
+  contractCount?: number | null;
+  activeDays?: number | null;
+};
+
+function isPublicGuildReward(name: string): boolean {
+  const lower = name.toLowerCase();
+  return !(
+    lower.includes("hidden") ||
+    lower.includes("admin") ||
+    lower.includes("retired") ||
+    lower.includes("test") ||
+    lower.includes("deleted")
+  );
+}
+
+function getTransactionThreshold(name: string): number | null {
+  const match = name.match(/Based:\s*([\d,]+)\s*transactions/i);
+  if (!match) return null;
+  return Number(match[1].replace(/,/g, ""));
+}
+
+function classifyGuildBadge(
+  name: string,
+  metrics: ActivityMetrics,
+): { status: "unlocked" | "locked" | "check"; reason: string } {
+  const txCount = metrics.txCount ?? 0;
+  const threshold = getTransactionThreshold(name);
+
+  if (threshold != null) {
+    return txCount >= threshold
+      ? { status: "unlocked", reason: `${threshold}+ Base tx` }
+      : { status: "locked", reason: `${threshold}+ Base tx needed` };
+  }
+
+  if (["Connected", "Based", "Onchain"].includes(name)) {
+    return txCount > 0
+      ? { status: "unlocked", reason: "Base activity found" }
+      : { status: "locked", reason: "No Base tx found" };
+  }
+
+  return {
+    status: "check",
+    reason: "Check on Guild",
+  };
+}
+
+async function fetchGuildBadges(
+  dune: ActivityMetrics,
+  local: ActivityMetrics,
+) {
+  const metrics = {
+    txCount: dune.txCount ?? local.txCount,
+    contractCount: dune.contractCount ?? local.contractCount,
+    activeDays: dune.activeDays ?? local.activeDays,
+  };
+
+  const res = await fetch(GUILD_BASE_API, {
+    headers: { accept: "application/json" },
+    next: { revalidate: 300 },
+  });
+
+  if (!res.ok) {
+    return {
+      configured: false,
+      url: GUILD_BASE_URL,
+      memberCount: null,
+      badges: [],
+    };
+  }
+
+  const guild = (await res.json()) as GuildResponse;
+  const rewards = guild.rewards ?? [];
+
+  const badges = rewards
+    .map((reward) => {
+      const name = reward.ui?.displayName?.trim() ?? "";
+      if (!name || !isPublicGuildReward(name)) return null;
+      const status = classifyGuildBadge(name, metrics);
+      return {
+        id: reward.id ?? reward.data?.roleId ?? name,
+        name,
+        type: reward.type ?? "GUILD",
+        imageUrl: reward.ui?.imageUrl ?? reward.ui?.imgUrl ?? null,
+        ...status,
+      };
+    })
+    .filter((badge): badge is NonNullable<typeof badge> => badge != null)
+    .sort((a, b) => {
+      const order = { unlocked: 0, locked: 1, check: 2 };
+      return order[a.status] - order[b.status] || a.name.localeCompare(b.name);
+    })
+    .slice(0, 24);
+
+  return {
+    configured: true,
+    url: GUILD_BASE_URL,
+    memberCount: guild.memberCount ?? null,
+    badges,
+  };
 }

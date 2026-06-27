@@ -37,7 +37,7 @@ Or connect the GitHub repo to Vercel. After first deploy, update `NEXT_PUBLIC_AP
 |---|---|
 | Name | DustLift |
 | Tagline | Turn wallet dust into ETH on Base |
-| Description | Scan wallet dust, batch-convert sellable tokens to ETH, swap Base assets, and view activity rank |
+| Description | Scan wallet dust, batch-convert sellable tokens to ETH, swap Base assets, view Base rank, and check Guild badges |
 | Category | DeFi |
 | Primary URL | Your Vercel URL |
 | Icon | 1024x1024 PNG |
@@ -62,13 +62,19 @@ After a test swap, check your creator wallet on BaseScan for incoming 0x settlem
 
 For global rank, create or reuse a Dune query whose latest result rows include wallet-level Base activity. Recommended columns:
 
-- `wallet`
-- `rank`
-- `score`
+- `address`
+- `rank_tx`
+- `native_volume_eth`
 - `tx_count`
+- `contract_count`
+- `gasfee_eth`
+- `first_activity`
 - `active_days`
+- `active_months`
 - `active_wallets`
 - `total_wallets`
 - `guild_tasks`
 
 Add the query id to `DUNE_BASE_ACTIVITY_QUERY_ID` in Vercel.
+
+The Base Guild section reads public badge names from `guild.xyz/base` and marks transaction-based roles from the Dune/Base activity metrics.

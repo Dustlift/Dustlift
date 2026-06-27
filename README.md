@@ -13,6 +13,7 @@ Wallet cleanup and swap assistant for Base: scan ERC-20 dust and scam leftovers,
 - Swap: ETH to token and token to ETH via 0x
 - Creator commission: 0x integrator fee on successful swaps
 - Base activity: local Base wallet activity plus optional Dune leaderboard data
+- Base Guild: public Guild badge list with Dune-based unlock estimates
 
 ## Setup
 
@@ -48,11 +49,15 @@ Fees are collected on-chain by 0x at settlement. No custom smart contract is req
 
 The activity panel works without Dune by showing local Base wallet data from Blockscout. For global rank, add a Dune query whose latest results include wallet rows with flexible column names such as:
 
-- `wallet` or `address`
-- `rank` or `activity_rank`
-- `score` or `activity_score`
+- `address` or `wallet`
+- `rank_tx`, `rank`, or `activity_rank`
+- `native_volume_eth`
 - `tx_count`
+- `contract_count`
+- `gasfee_eth`
+- `first_activity`
 - `active_days`
+- `active_months`
 - `active_wallets`
 - `total_wallets`
 - `guild_tasks` or `guild_score`

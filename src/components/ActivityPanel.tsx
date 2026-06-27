@@ -16,10 +16,16 @@ type LocalActivity = {
 type DuneActivity = {
   configured: boolean;
   rowFound: boolean;
+  address?: string | null;
   rank?: number | null;
   score?: number | null;
   txCount?: number | null;
+  nativeVolumeEth?: number | null;
+  contractCount?: number | null;
+  gasFeeEth?: number | null;
   activeDays?: number | null;
+  activeMonths?: number | null;
+  firstActivity?: string | null;
   percentile?: number | null;
   totalWallets?: number | null;
   activeWallets?: number | null;
@@ -27,9 +33,26 @@ type DuneActivity = {
   label?: string | null;
 };
 
+type GuildBadge = {
+  id: string;
+  name: string;
+  type: string;
+  imageUrl?: string | null;
+  status: "unlocked" | "locked" | "check";
+  reason: string;
+};
+
+type GuildActivity = {
+  configured: boolean;
+  url: string;
+  memberCount: number | null;
+  badges: GuildBadge[];
+};
+
 type ActivityResponse = {
   local: LocalActivity;
   dune: DuneActivity;
+  guild: GuildActivity;
   error?: string;
 };
 
@@ -55,6 +78,11 @@ function formatDate(value: string | null | undefined): string {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function formatEth(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "--";
+  return `${formatNumber(value)} ETH`;
 }
 
 export function ActivityPanel() {
@@ -128,7 +156,7 @@ export function ActivityPanel() {
       {isConnected && (
         <div className="grid gap-3 sm:grid-cols-3">
           <ActivityStat
-            label="Global rank"
+            label="Base rank"
             value={
               data?.dune.rowFound && data.dune.rank
                 ? `#${formatNumber(data.dune.rank)}`
@@ -138,37 +166,89 @@ export function ActivityPanel() {
             }
           />
           <ActivityStat
-            label="Activity score"
-            value={formatNumber(data?.dune.score ?? data?.local.score)}
+            label="Native volume"
+            value={formatEth(data?.dune.nativeVolumeEth)}
           />
           <ActivityStat
-            label="Active wallet share"
-            value={formatPercent(activeWalletRatio)}
+            label="Contracts"
+            value={formatNumber(data?.dune.contractCount)}
           />
           <ActivityStat
             label="Base tx"
             value={formatNumber(data?.dune.txCount ?? data?.local.txCount)}
           />
           <ActivityStat
+            label="Gas paid"
+            value={formatEth(data?.dune.gasFeeEth)}
+          />
+          <ActivityStat
+            label="Active months"
+            value={formatNumber(data?.dune.activeMonths)}
+          />
+          <ActivityStat
             label="Active days"
             value={formatNumber(data?.dune.activeDays ?? data?.local.activeDays)}
           />
           <ActivityStat
-            label="Guild"
-            value={
-              data?.dune.guildTasks != null
-                ? formatNumber(data.dune.guildTasks)
-                : data?.dune.label ?? "--"
-            }
+            label="First activity"
+            value={formatDate(data?.dune.firstActivity ?? data?.local.firstSeen)}
+          />
+          <ActivityStat
+            label="Active wallet share"
+            value={formatPercent(activeWalletRatio)}
           />
         </div>
       )}
 
+      {data?.dune.configured && !data.dune.rowFound && (
+        <p className="mt-3 text-xs text-[#8a9a8c]">
+          Address was not found in the saved Dune result. Increase the Dune
+          result limit or use a query that returns the connected address row.
+        </p>
+      )}
+
+      {data?.guild && (
+        <section className="mt-6 rounded-2xl border border-[#3d4a3f]/50 bg-[#141a16]/70 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-serif text-xl italic text-[#e8e4dc]">
+                Base Guild badges
+              </h3>
+              <p className="text-xs text-[#6b7a6d]">
+                {data.guild.memberCount
+                  ? `${formatNumber(data.guild.memberCount)} Guild members`
+                  : "Guild badge data"}
+              </p>
+            </div>
+            <a
+              href={data.guild.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-[#6b8f71] hover:underline"
+            >
+              Open Guild
+            </a>
+          </div>
+
+          {data.guild.badges.length > 0 ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {data.guild.badges.map((badge) => (
+                <BadgeRow key={badge.id} badge={badge} />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-[#8a9a8c]">
+              Guild badges could not be loaded right now.
+            </p>
+          )}
+        </section>
+      )}
+
       {data?.local && (
         <div className="mt-3 grid gap-3 text-xs text-[#6b7a6d] sm:grid-cols-3">
-          <p>First seen: {formatDate(data.local.firstSeen)}</p>
           <p>Last seen: {formatDate(data.local.lastSeen)}</p>
           <p>Sampled tx: {formatNumber(data.local.sampledTxCount)}</p>
+          <p>Local score: {formatNumber(data.local.score)}</p>
         </div>
       )}
 
@@ -186,6 +266,37 @@ function ActivityStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-[#3d4a3f]/50 bg-[#141a16]/80 px-4 py-3">
       <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">{label}</p>
       <p className="mt-1 text-lg font-medium text-[#e8e4dc]">{value}</p>
+    </div>
+  );
+}
+
+function BadgeRow({ badge }: { badge: GuildBadge }) {
+  const statusClass =
+    badge.status === "unlocked"
+      ? "border-[#6b8f71]/50 bg-[#1f2a21] text-[#a8d5ad]"
+      : badge.status === "locked"
+        ? "border-[#3d4a3f]/50 bg-[#101611] text-[#8a9a8c]"
+        : "border-amber-900/40 bg-amber-950/10 text-amber-200/90";
+  const label =
+    badge.status === "unlocked"
+      ? "Unlocked"
+      : badge.status === "locked"
+        ? "Locked"
+        : "Check";
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#2a332c] bg-[#101611]/80 px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-[#e8e4dc]">
+          {badge.name}
+        </p>
+        <p className="truncate text-xs text-[#6b7a6d]">{badge.reason}</p>
+      </div>
+      <span
+        className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${statusClass}`}
+      >
+        {label}
+      </span>
     </div>
   );
 }
