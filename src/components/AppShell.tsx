@@ -4,8 +4,9 @@ import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { DustScanner } from "@/components/DustScanner";
 import { ApprovalPanel } from "@/components/ApprovalPanel";
+import { BuilderActivatePanel } from "@/components/BuilderActivatePanel";
 
-type Tab = "dust" | "approvals";
+type Tab = "dust" | "builder" | "approvals";
 
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("dust");
@@ -15,7 +16,7 @@ export function AppShell() {
       <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-[#8a9a8c]">
-            Base Network Â· Base App ready
+            Base Network - Base App ready
           </p>
           <h1 className="font-serif text-4xl italic text-[#e8e4dc]">
             DustLift
@@ -31,7 +32,8 @@ export function AppShell() {
       <nav className="flex gap-2 rounded-xl border border-[#3d4a3f]/60 bg-[#141a16]/80 p-1">
         {(
           [
-            ["dust", "Dust â†’ ETH"],
+            ["dust", "Dust -> ETH"],
+            ["builder", "Builder"],
             ["approvals", "Approvals"],
           ] as const
         ).map(([id, label]) => (
@@ -50,8 +52,11 @@ export function AppShell() {
         ))}
       </nav>
 
-      {tab === "dust" ? <DustScanner /> : <ApprovalPanel />}
+      {tab === "dust" && <DustScanner />}
+      {tab === "builder" && <BuilderActivatePanel />}
+      {tab === "approvals" && <ApprovalPanel />}
     </div>
   );
 }
+
 

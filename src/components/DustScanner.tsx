@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
@@ -197,7 +197,7 @@ export function DustScanner() {
           disabled={loading}
           className="rounded-xl bg-[#6b8f71] px-6 py-3 font-medium text-[#0f1410] transition hover:bg-[#7fa385] disabled:opacity-50"
         >
-          {loading ? "Scanning…" : "Scan wallet"}
+          {loading ? "Scanning..." : "Scan wallet"}
         </button>
       </section>
 
@@ -209,7 +209,7 @@ export function DustScanner() {
 
       {supportsBatch && (
         <p className="text-xs text-[#6b8f71]">
-          Your wallet supports batch transactions — multiple swaps in fewer
+          Your wallet supports batch transactions - multiple swaps in fewer
           signatures.
         </p>
       )}
@@ -325,12 +325,12 @@ export function DustScanner() {
                 {swappableSelected.length > 1 ? "s" : ""} selected
               </p>
               <p className="text-xl text-[#e8e4dc]">
-                ~{formatUsd(estimatedRecovery)} → ETH
+                ~{formatUsd(estimatedRecovery)} to ETH
               </p>
               {progress.status !== "idle" && progress.status !== "done" && (
                 <p className="text-sm text-[#6b8f71]">
                   {progress.status === "batching" && progress.message}
-                  {progress.status === "approving" && "Approving…"}
+                  {progress.status === "approving" && "Approving..."}
                   {progress.status === "swapping" &&
                     (progress.mode === "batch"
                       ? progress.message
@@ -462,3 +462,5 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+
