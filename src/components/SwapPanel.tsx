@@ -53,9 +53,12 @@ export function SwapPanel() {
     }
   }, [amount, selectedToken]);
 
-  const expectedEth = quote
-    ? `${Number(formatUnits(BigInt(quote.buyAmount), 18)).toFixed(6)} ETH`
-    : "0";
+  const expectedEth =
+    status === "quoting"
+      ? "Calculating..."
+      : quote
+        ? `${Number(formatUnits(BigInt(quote.buyAmount), 18)).toFixed(6)} ETH`
+        : "0";
 
   const loadTokens = useCallback(async () => {
     if (!address) return;
@@ -71,7 +74,7 @@ export function SwapPanel() {
 
       const parsed = data.tokens
         .map((token) => ({ ...token, balance: BigInt(token.balance) }))
-        .filter((token) => !token.isNative && !token.isScam);
+        .filter((token) => token.isTrusted && !token.isNative && !token.isScam);
 
       setTokens(parsed);
       setSelectedAddress((current) => current || parsed[0]?.address || "");
@@ -90,7 +93,7 @@ export function SwapPanel() {
     return () => window.clearTimeout(timeout);
   }, [address, loadTokens]);
 
-  async function fetchQuote() {
+  const fetchQuote = useCallback(async () => {
     if (!address || !selectedToken || !sellAmount) return;
     setError(null);
     setHash(null);
@@ -110,7 +113,19 @@ export function SwapPanel() {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Quote failed");
     }
-  }
+  }, [address, selectedToken, sellAmount]);
+
+  useEffect(() => {
+    if (!address || !selectedToken || !sellAmount) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void fetchQuote();
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [address, selectedToken, sellAmount, fetchQuote]);
 
   async function executeSwap() {
     if (!address || !publicClient || !quote || !sellAmount || !selectedToken) {
@@ -180,6 +195,7 @@ export function SwapPanel() {
             onChange={(event) => {
               setAmount(event.target.value);
               setQuote(null);
+              setError(null);
             }}
             inputMode="decimal"
             placeholder="0"
@@ -192,6 +208,7 @@ export function SwapPanel() {
                 setSelectedAddress(event.target.value);
                 setAmount("");
                 setQuote(null);
+                setError(null);
               }}
               className="max-w-40 rounded-full border border-[#3d4a3f] bg-[#1a211c] px-3 py-2 text-sm font-semibold text-[#e8e4dc] outline-none"
             >
@@ -211,6 +228,7 @@ export function SwapPanel() {
                 onClick={() => {
                   setAmount(formatUnits(selectedToken.balance, selectedToken.decimals));
                   setQuote(null);
+                  setError(null);
                 }}
                 className="text-xs text-[#6b8f71] hover:underline"
               >
@@ -272,7 +290,7 @@ export function SwapPanel() {
           {status === "quoting" && "Getting quote..."}
           {status !== "loading" &&
             status !== "quoting" &&
-            (tokens.length === 0 ? "Load wallet tokens" : "Get quote")}
+            (tokens.length === 0 ? "Load wallet tokens" : "Refresh quote")}
         </button>
         <button
           type="button"

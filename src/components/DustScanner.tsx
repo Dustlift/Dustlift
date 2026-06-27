@@ -39,6 +39,7 @@ export function DustScanner() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(false);
+  const [showUnverified, setShowUnverified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<SweepProgress>({
@@ -65,7 +66,18 @@ export function DustScanner() {
   );
 
   const dustTokens = useMemo(
-    () => visibleTokens.filter((t) => t.isDust),
+    () =>
+      visibleTokens.filter(
+        (t) => t.isDust && t.isTrusted && !t.isScam && !t.isNative,
+      ),
+    [visibleTokens],
+  );
+
+  const unverifiedTokens = useMemo(
+    () =>
+      visibleTokens.filter(
+        (t) => t.isDust && !t.isTrusted && !t.isScam && !t.isNative,
+      ),
     [visibleTokens],
   );
 
@@ -109,7 +121,7 @@ export function DustScanner() {
 
       const autoSelect = new Set(
         parsed
-          .filter((t) => t.isDust && t.isSwappable && !t.isScam)
+          .filter((t) => t.isDust && t.isTrusted && t.isSwappable && !t.isScam)
           .map((t) => t.address),
       );
       setSelected(autoSelect);
@@ -223,12 +235,16 @@ export function DustScanner() {
       )}
 
       {summary && (
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-6">
           <Stat label="Total tokens" value={String(summary.totalTokens)} />
           <Stat label="Dust found" value={String(summary.dustTokens)} />
           <Stat label="Scam flagged" value={String(summary.scamTokens)} />
           <Stat label="Recoverable" value={formatUsd(summary.swappableDustUsd)} />
           <Stat label="Unsellable" value={String(summary.unsellableCount)} />
+          <Stat
+            label="Unverified"
+            value={String(summary.unverifiedCount ?? unverifiedTokens.length)}
+          />
         </section>
       )}
 
@@ -249,6 +265,46 @@ export function DustScanner() {
           />
           Show {hidden.size} hidden token{hidden.size > 1 ? "s" : ""}
         </label>
+      )}
+
+      {unverifiedTokens.length > 0 && (
+        <section className="rounded-2xl border border-amber-900/30 bg-amber-950/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-serif text-xl italic text-[#d4cfc4]">
+                Unverified tokens hidden from sweep
+              </h2>
+              <p className="mt-1 text-sm text-[#8a9a8c]">
+                {unverifiedTokens.length} token skipped because market cap,
+                liquidity, price, or metadata looked unsafe.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowUnverified((value) => !value)}
+              className="rounded-xl border border-[#3d4a3f] px-4 py-2 text-sm text-[#c5cdc6] hover:bg-[#1a211c]"
+            >
+              {showUnverified ? "Hide list" : "Review list"}
+            </button>
+          </div>
+
+          {showUnverified && (
+            <ul className="mt-4 divide-y divide-[#2a332c] overflow-hidden rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/90">
+              {unverifiedTokens.map((token) => (
+                <TokenRow
+                  key={token.address}
+                  token={token}
+                  selected={false}
+                  onToggle={() => undefined}
+                  onHide={() => handleHide(token.address)}
+                  onReport={() => handleReportScam(token)}
+                  disabled
+                  variant="unverified"
+                />
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {scamTokens.length > 0 && (
@@ -322,7 +378,7 @@ export function DustScanner() {
 
       {tokens.length > 0 && dustTokens.length === 0 && (
         <p className="text-center text-[#8a9a8c]">
-          No dust tokens found below ${threshold}.
+          No trusted sellable dust tokens found below ${threshold}.
         </p>
       )}
 
@@ -392,7 +448,7 @@ function TokenRow({
   onReport: () => void;
   onUnhide?: () => void;
   disabled?: boolean;
-  variant?: "dust" | "scam";
+  variant?: "dust" | "scam" | "unverified";
 }) {
   return (
     <li className="grid gap-3 px-4 py-3 hover:bg-[#1a211c]/80 sm:grid-cols-[auto_1.5fr_1fr_1fr_1fr_auto] sm:items-center">
@@ -431,6 +487,9 @@ function TokenRow({
         <p className="truncate text-xs text-[#6b7a6d]">{token.name}</p>
         {token.swapBlockedReason && (
           <p className="text-xs text-[#8a7060]">{token.swapBlockedReason}</p>
+        )}
+        {token.trustReason && variant === "unverified" && (
+          <p className="text-xs text-[#8a7060]">{token.trustReason}</p>
         )}
         {token.scamReason && (
           <p className="text-xs text-red-300/80">{token.scamReason}</p>

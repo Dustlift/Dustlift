@@ -9,6 +9,10 @@ export type TokenBalance = {
   balanceFormatted: number;
   usdPrice: number | null;
   usdValue: number | null;
+  marketCapUsd?: number | null;
+  liquidityUsd?: number | null;
+  isTrusted?: boolean;
+  trustReason?: string;
   isDust: boolean;
   isSwappable: boolean;
   isScam: boolean;
@@ -33,6 +37,7 @@ export type ScanSummary = {
   scamTokens: number;
   swappableDustUsd: number;
   unsellableCount: number;
+  unverifiedCount: number;
 };
 
 export type BatchCall = {

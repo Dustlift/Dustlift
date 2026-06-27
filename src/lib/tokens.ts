@@ -21,8 +21,43 @@ type BlockscoutAddress = {
 
 type RawToken = Omit<
   TokenBalance,
-  "usdPrice" | "usdValue" | "isDust" | "isSwappable"
+  | "usdPrice"
+  | "usdValue"
+  | "marketCapUsd"
+  | "liquidityUsd"
+  | "isTrusted"
+  | "trustReason"
+  | "isDust"
+  | "isSwappable"
 >;
+
+type TokenMarketData = {
+  priceUsd: number | null;
+  marketCapUsd: number | null;
+  liquidityUsd: number | null;
+};
+
+type DexScreenerPair = {
+  chainId?: string;
+  priceUsd?: string;
+  marketCap?: number;
+  fdv?: number;
+  liquidity?: { usd?: number };
+  baseToken?: { address?: string };
+  quoteToken?: { address?: string };
+};
+
+const MIN_TRUSTED_MARKET_CAP_USD = 1_000_000;
+const MIN_TRUSTED_LIQUIDITY_USD = 10_000;
+const ALWAYS_TRUSTED_BASE_TOKENS = new Set([
+  ETH_ADDRESS.toLowerCase(),
+  "0x4200000000000000000000000000000000000006", // WETH
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bdA02913".toLowerCase(), // USDC
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb", // DAI
+  "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42", // EURC
+  "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", // cbBTC
+  "0x940181a94a35a4569e4529a3cdfb74e38fd98631", // AERO
+]);
 
 export async function fetchWalletTokens(
   walletAddress: string,
@@ -136,13 +171,67 @@ export async function fetchTokenPrices(
   return prices;
 }
 
+export async function fetchTokenMarketData(
+  addresses: string[],
+): Promise<Record<string, TokenMarketData>> {
+  const unique = [
+    ...new Set(
+      addresses
+        .map((address) => address.toLowerCase())
+        .filter((address) => address !== ETH_ADDRESS.toLowerCase()),
+    ),
+  ];
+  if (unique.length === 0) return {};
+
+  const result: Record<string, TokenMarketData> = {};
+  const chunkSize = 25;
+
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const res = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${chunk.join(",")}`,
+      { next: { revalidate: 300 } },
+    );
+
+    if (!res.ok) continue;
+
+    const data = (await res.json()) as { pairs?: DexScreenerPair[] };
+
+    for (const pair of data.pairs ?? []) {
+      if (pair.chainId?.toLowerCase() !== "base") continue;
+
+      const pairAddresses = [
+        pair.baseToken?.address?.toLowerCase(),
+        pair.quoteToken?.address?.toLowerCase(),
+      ].filter(Boolean) as string[];
+      const matched = pairAddresses.find((address) => chunk.includes(address));
+      if (!matched) continue;
+
+      const next = {
+        priceUsd: pair.priceUsd ? Number(pair.priceUsd) : null,
+        marketCapUsd: pair.marketCap ?? pair.fdv ?? null,
+        liquidityUsd: pair.liquidity?.usd ?? null,
+      };
+      const current = result[matched];
+      if (!current || (next.liquidityUsd ?? 0) > (current.liquidityUsd ?? 0)) {
+        result[matched] = next;
+      }
+    }
+  }
+
+  return result;
+}
+
 export function enrichTokensWithPricing(
   tokens: RawToken[],
   prices: Record<string, number>,
+  marketData: Record<string, TokenMarketData>,
   dustThresholdUsd: number,
 ): TokenBalance[] {
   return tokens.map((token) => {
-    const usdPrice = prices[token.address.toLowerCase()] ?? null;
+    const market = marketData[token.address.toLowerCase()];
+    const usdPrice =
+      prices[token.address.toLowerCase()] ?? market?.priceUsd ?? null;
     const usdValue =
       usdPrice != null ? token.balanceFormatted * usdPrice : null;
     const isDust = token.isNative
@@ -151,12 +240,58 @@ export function enrichTokensWithPricing(
         ? usdValue < dustThresholdUsd
         : true;
 
+    const trust = getTrust(token, usdPrice, market);
+
     return {
       ...token,
       usdPrice,
       usdValue,
+      marketCapUsd: market?.marketCapUsd ?? null,
+      liquidityUsd: market?.liquidityUsd ?? null,
+      isTrusted: trust.isTrusted,
+      trustReason: trust.reason,
       isDust,
       isSwappable: false,
     };
   });
+}
+
+function getTrust(
+  token: RawToken,
+  usdPrice: number | null,
+  market?: TokenMarketData,
+): { isTrusted: boolean; reason?: string } {
+  if (token.isNative) return { isTrusted: true };
+  if (token.isScam) return { isTrusted: false, reason: "Flagged as scam" };
+  if (ALWAYS_TRUSTED_BASE_TOKENS.has(token.address.toLowerCase())) {
+    return { isTrusted: true, reason: "Core Base token" };
+  }
+  if (!hasCleanMetadata(token)) {
+    return { isTrusted: false, reason: "Unverified token metadata" };
+  }
+  if (usdPrice == null) {
+    return { isTrusted: false, reason: "No trusted price source" };
+  }
+
+  const marketCap = market?.marketCapUsd ?? 0;
+  const liquidity = market?.liquidityUsd ?? 0;
+
+  if (marketCap >= MIN_TRUSTED_MARKET_CAP_USD) {
+    return { isTrusted: true, reason: "Market cap filter passed" };
+  }
+  if (liquidity >= MIN_TRUSTED_LIQUIDITY_USD) {
+    return { isTrusted: true, reason: "Liquidity filter passed" };
+  }
+
+  return { isTrusted: false, reason: "Low market cap or liquidity" };
+}
+
+function hasCleanMetadata(token: RawToken): boolean {
+  const text = `${token.symbol} ${token.name}`.toLowerCase();
+  if (!token.symbol || token.symbol === "???") return false;
+  if (token.name === "Unknown Token") return false;
+  if (/https?:|www\.|claim|airdrop|reward|voucher|visit|bonus|\.com/.test(text)) {
+    return false;
+  }
+  return /^[a-zA-Z0-9.$+\-_\s()]{1,64}$/.test(`${token.symbol} ${token.name}`);
 }

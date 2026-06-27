@@ -3,6 +3,7 @@ import { getKnownScamAddresses, getKnownScamReason } from "@/lib/scam";
 import { DEFAULT_DUST_THRESHOLD_USD } from "@/lib/constants";
 import {
   enrichTokensWithPricing,
+  fetchTokenMarketData,
   fetchTokenPrices,
   fetchWalletTokens,
 } from "@/lib/tokens";
@@ -23,8 +24,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const rawTokens = await fetchWalletTokens(address);
-    const prices = await fetchTokenPrices(rawTokens.map((t) => t.address));
-    let tokens = enrichTokensWithPricing(rawTokens, prices, threshold);
+    const addresses = rawTokens.map((t) => t.address);
+    const [prices, marketData] = await Promise.all([
+      fetchTokenPrices(addresses),
+      fetchTokenMarketData(addresses),
+    ]);
+    let tokens = enrichTokensWithPricing(
+      rawTokens,
+      prices,
+      marketData,
+      threshold,
+    );
 
     const knownScams = getKnownScamAddresses();
     const scanRoute = tokens.map((t) => {
@@ -57,12 +67,15 @@ export async function GET(request: NextRequest) {
 
     const summary: ScanSummary = {
       totalTokens: tokens.length,
-      dustTokens: tokens.filter((t) => t.isDust).length,
+      dustTokens: tokens.filter((t) => t.isDust && t.isTrusted).length,
       scamTokens: tokens.filter((t) => t.isScam).length,
       swappableDustUsd: tokens
-        .filter((t) => t.isDust && t.isSwappable)
+        .filter((t) => t.isDust && t.isTrusted && t.isSwappable)
         .reduce((sum, t) => sum + (t.usdValue ?? 0), 0),
-      unsellableCount: tokens.filter((t) => t.isDust && !t.isSwappable).length,
+      unsellableCount: tokens.filter(
+        (t) => t.isDust && t.isTrusted && !t.isSwappable,
+      ).length,
+      unverifiedCount: tokens.filter((t) => t.isDust && !t.isTrusted).length,
     };
 
     return NextResponse.json({
@@ -81,7 +94,9 @@ async function markSwappableTokens(
   tokens: TokenBalance[],
   takerAddress: string,
 ): Promise<TokenBalance[]> {
-  const dustTokens = tokens.filter((t) => t.isDust && !t.isScam && !t.isNative);
+  const dustTokens = tokens.filter(
+    (t) => t.isDust && t.isTrusted && !t.isScam && !t.isNative,
+  );
 
   const results = await Promise.all(
     dustTokens.map(async (token) => {
