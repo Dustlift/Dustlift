@@ -9,6 +9,11 @@ type BlockscoutTransaction = {
   to?: { hash?: string | null } | null;
 };
 
+type BlockscoutTransactionsResponse = {
+  items?: BlockscoutTransaction[];
+  next_page_params?: Record<string, string | number | boolean | null> | null;
+};
+
 type DuneRow = Record<string, unknown>;
 
 const NUMBER_KEYS = {
@@ -29,6 +34,9 @@ const NUMBER_KEYS = {
 const ADDRESS_KEYS = ["wallet", "address", "user", "account", "tx_from"];
 const GUILD_BASE_URL = "https://guild.xyz/base";
 const GUILD_BASE_API = "https://api.guild.xyz/v2/guilds/base?include=roles";
+const DEFAULT_DUNE_PAGE_SIZE = 1000;
+const DEFAULT_DUNE_MAX_PAGES = 0;
+const DEFAULT_BLOCKSCOUT_TX_PAGES = 12;
 
 function readNumber(obj: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
@@ -60,6 +68,10 @@ function readDateString(
     if (typeof value === "string" && value.trim() !== "") return value;
   }
   return null;
+}
+
+function sameAddress(value: unknown, address: string): boolean {
+  return String(value ?? "").toLowerCase() === address.toLowerCase();
 }
 
 function parseTimestamp(value: string | null | undefined): number | null {
@@ -95,25 +107,17 @@ export async function GET(request: NextRequest) {
 }
 
 async function fetchLocalActivity(address: string) {
-  const [profile, txData] = await Promise.all([
+  const [profile, items] = await Promise.all([
     fetch(`${BLOCKSCOUT_BASE}/addresses/${address}`, {
       headers: { accept: "application/json" },
       next: { revalidate: 60 },
     }),
-    fetch(`${BLOCKSCOUT_BASE}/addresses/${address}/transactions`, {
-      headers: { accept: "application/json" },
-      next: { revalidate: 60 },
-    }),
+    fetchBlockscoutTransactions(address),
   ]);
 
   const profileJson = profile.ok
     ? ((await profile.json()) as BlockscoutAddress)
     : {};
-  const txJson = txData.ok
-    ? ((await txData.json()) as { items?: BlockscoutTransaction[] })
-    : {};
-
-  const items = txJson.items ?? [];
   const timestamps = items
     .map((tx) => parseTimestamp(tx.timestamp))
     .filter((value): value is number => value != null)
@@ -138,6 +142,11 @@ async function fetchLocalActivity(address: string) {
     "token_transfers_count",
     "token_transfer_count",
   ]);
+  const contractCount = new Set(
+    items
+      .map((tx) => tx.to?.hash?.toLowerCase())
+      .filter((hash): hash is string => Boolean(hash)),
+  ).size;
   const activeDays = Math.max(uniqueDays.size, ageDays ? Math.min(ageDays, 1) : 0);
   const score = Math.round(
     txCount * 1.5 + activeDays * 8 + (tokenTransferCount ?? 0) * 0.25,
@@ -146,12 +155,45 @@ async function fetchLocalActivity(address: string) {
   return {
     txCount,
     tokenTransferCount,
+    contractCount,
     sampledTxCount: items.length,
     activeDays,
     firstSeen: firstSeen ? new Date(firstSeen).toISOString() : null,
     lastSeen: lastSeen ? new Date(lastSeen).toISOString() : null,
     score,
   };
+}
+
+async function fetchBlockscoutTransactions(
+  address: string,
+): Promise<BlockscoutTransaction[]> {
+  const maxPages = Number(
+    process.env.BLOCKSCOUT_ACTIVITY_TX_PAGES ?? DEFAULT_BLOCKSCOUT_TX_PAGES,
+  );
+  const items: BlockscoutTransaction[] = [];
+  let nextParams: BlockscoutTransactionsResponse["next_page_params"] = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const url = new URL(`${BLOCKSCOUT_BASE}/addresses/${address}/transactions`);
+    if (nextParams) {
+      for (const [key, value] of Object.entries(nextParams)) {
+        if (value != null) url.searchParams.set(key, String(value));
+      }
+    }
+
+    const res = await fetch(url.toString(), {
+      headers: { accept: "application/json" },
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) break;
+
+    const data = (await res.json()) as BlockscoutTransactionsResponse;
+    items.push(...(data.items ?? []));
+    nextParams = data.next_page_params ?? null;
+    if (!nextParams) break;
+  }
+
+  return items;
 }
 
 async function fetchDuneActivity(address: string) {
@@ -167,12 +209,17 @@ async function fetchDuneActivity(address: string) {
 
   const target = address.toLowerCase();
   const filteredRow = await fetchDuneRowByAddress(queryId, apiKey, target);
-  const rows = filteredRow ? [] : await fetchDuneRows(queryId, apiKey);
+  const pagedRow = filteredRow
+    ? { row: filteredRow, pagesScanned: 0, rowsScanned: 0, complete: true }
+    : await findDuneRowByPaging(queryId, apiKey, target);
+  const rows =
+    filteredRow || pagedRow.row ? [] : await fetchDuneRows(queryId, apiKey);
   const row =
     filteredRow ??
+    pagedRow.row ??
     rows.find((item) =>
       ADDRESS_KEYS.some((key) =>
-        String(item[key] ?? "").toLowerCase() === target,
+        sameAddress(item[key], target),
       ),
     ) ?? null;
 
@@ -182,6 +229,9 @@ async function fetchDuneActivity(address: string) {
     configured: true,
     queryId,
     rowFound: Boolean(row),
+    pagesScanned: pagedRow.pagesScanned,
+    rowsScanned: pagedRow.rowsScanned,
+    searchComplete: pagedRow.complete,
     address: row ? readString(row, ADDRESS_KEYS) : null,
     rank: row ? readNumber(row, NUMBER_KEYS.rank) : null,
     score: row ? readNumber(row, NUMBER_KEYS.score) : null,
@@ -216,13 +266,82 @@ async function fetchDuneRowByAddress(
   address: string,
 ): Promise<DuneRow | null> {
   for (const key of ADDRESS_KEYS) {
-    const rows = await fetchDuneRows(queryId, apiKey, {
-      limit: 1,
-      filters: `${key} = '${address}'`,
-    });
-    if (rows.length > 0) return rows[0];
+    const filters = [
+      `${key} = '${address}'`,
+      `${key} = ${address}`,
+      `lower(${key}) = '${address}'`,
+    ];
+
+    for (const filter of filters) {
+      const rows = await fetchDuneRows(queryId, apiKey, {
+        limit: 1,
+        filters: filter,
+      });
+      const exact = rows.find((row) =>
+        ADDRESS_KEYS.some((addressKey) => sameAddress(row[addressKey], address)),
+      );
+      if (exact) return exact;
+      if (rows.length > 0 && !ADDRESS_KEYS.some((addressKey) => addressKey in rows[0])) {
+        return rows[0];
+      }
+    }
   }
   return null;
+}
+
+async function findDuneRowByPaging(
+  queryId: string,
+  apiKey: string,
+  address: string,
+): Promise<{
+  row: DuneRow | null;
+  pagesScanned: number;
+  rowsScanned: number;
+  complete: boolean;
+}> {
+  const limit = Number(
+    process.env.DUNE_BASE_ACTIVITY_PAGE_SIZE ?? DEFAULT_DUNE_PAGE_SIZE,
+  );
+  const maxPages = Number(
+    process.env.DUNE_BASE_ACTIVITY_MAX_PAGES ?? DEFAULT_DUNE_MAX_PAGES,
+  );
+  let rowsScanned = 0;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const rows = await fetchDuneRows(queryId, apiKey, {
+      limit,
+      offset: page * limit,
+    });
+    rowsScanned += rows.length;
+
+    const row = rows.find((item) =>
+      ADDRESS_KEYS.some((key) => sameAddress(item[key], address)),
+    );
+    if (row) {
+      return {
+        row,
+        pagesScanned: page + 1,
+        rowsScanned,
+        complete: true,
+      };
+    }
+
+    if (rows.length < limit) {
+      return {
+        row: null,
+        pagesScanned: page + 1,
+        rowsScanned,
+        complete: true,
+      };
+    }
+  }
+
+  return {
+    row: null,
+    pagesScanned: maxPages,
+    rowsScanned,
+    complete: false,
+  };
 }
 
 async function fetchDuneRows(

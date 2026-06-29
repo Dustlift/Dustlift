@@ -34,6 +34,8 @@ npm run dev
 | `DUNE_API_KEY` | Optional Dune API key for activity leaderboard |
 | `DUNE_BASE_ACTIVITY_QUERY_ID` | Optional Dune query id for Base activity rank |
 | `DUNE_BASE_ACTIVITY_LIMIT` | Optional latest-result row limit, default 1000 |
+| `DUNE_BASE_ACTIVITY_MAX_PAGES` | Optional fallback paging, keep 0 on Vercel unless needed |
+| `BLOCKSCOUT_ACTIVITY_TX_PAGES` | Local fallback transaction pages, default 12 |
 
 ## Commission Model
 
@@ -63,6 +65,12 @@ The activity panel works without Dune by showing local Base wallet data from Blo
 - `guild_tasks` or `guild_score`
 
 Then add `DUNE_API_KEY` and `DUNE_BASE_ACTIVITY_QUERY_ID` in Vercel.
+
+For best Dune API filtering, output the address as lowercase text:
+
+```sql
+lower(cast(address as varchar)) as address
+```
 
 ## Deploy To Vercel
 

@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 type LocalActivity = {
   txCount: number;
   tokenTransferCount: number | null;
+  contractCount: number;
   sampledTxCount: number;
   activeDays: number;
   firstSeen: string | null;
@@ -16,6 +17,9 @@ type LocalActivity = {
 type DuneActivity = {
   configured: boolean;
   rowFound: boolean;
+  pagesScanned?: number;
+  rowsScanned?: number;
+  searchComplete?: boolean;
   address?: string | null;
   rank?: number | null;
   score?: number | null;
@@ -171,7 +175,7 @@ export function ActivityPanel() {
           />
           <ActivityStat
             label="Contracts"
-            value={formatNumber(data?.dune.contractCount)}
+            value={formatNumber(data?.dune.contractCount ?? data?.local.contractCount)}
           />
           <ActivityStat
             label="Base tx"
@@ -202,8 +206,10 @@ export function ActivityPanel() {
 
       {data?.dune.configured && !data.dune.rowFound && (
         <p className="mt-3 text-xs text-[#8a9a8c]">
-          Address was not found in the saved Dune result. Increase the Dune
-          result limit or use a query that returns the connected address row.
+          Dune row not found after scanning{" "}
+          {formatNumber(data.dune.rowsScanned)} saved rows. Increase
+          `DUNE_BASE_ACTIVITY_MAX_PAGES` or use a Dune query that returns the
+          connected address row directly.
         </p>
       )}
 
@@ -248,6 +254,7 @@ export function ActivityPanel() {
         <div className="mt-3 grid gap-3 text-xs text-[#6b7a6d] sm:grid-cols-3">
           <p>Last seen: {formatDate(data.local.lastSeen)}</p>
           <p>Sampled tx: {formatNumber(data.local.sampledTxCount)}</p>
+          <p>Sampled contracts: {formatNumber(data.local.contractCount)}</p>
           <p>Local score: {formatNumber(data.local.score)}</p>
         </div>
       )}

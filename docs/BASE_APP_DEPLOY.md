@@ -14,6 +14,9 @@ FEE_BPS=75
 DUNE_API_KEY=
 DUNE_BASE_ACTIVITY_QUERY_ID=
 DUNE_BASE_ACTIVITY_LIMIT=1000
+DUNE_BASE_ACTIVITY_PAGE_SIZE=1000
+DUNE_BASE_ACTIVITY_MAX_PAGES=0
+BLOCKSCOUT_ACTIVITY_TX_PAGES=12
 ```
 
 `DUNE_API_KEY` and `DUNE_BASE_ACTIVITY_QUERY_ID` are optional. Without them, the activity panel still shows local Base wallet activity from Blockscout.
@@ -76,5 +79,11 @@ For global rank, create or reuse a Dune query whose latest result rows include w
 - `guild_tasks`
 
 Add the query id to `DUNE_BASE_ACTIVITY_QUERY_ID` in Vercel.
+
+For reliable API filtering, make the Dune query output the wallet column as lowercase text:
+
+```sql
+lower(cast(address as varchar)) as address
+```
 
 The Base Guild section reads public badge names from `guild.xyz/base` and marks transaction-based roles from the Dune/Base activity metrics.

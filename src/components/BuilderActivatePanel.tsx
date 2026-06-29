@@ -7,19 +7,31 @@ import {
   useSendTransaction,
   useSwitchChain,
 } from "wagmi";
-import { isAddress, toHex } from "viem";
+import { formatEther, isAddress, toHex } from "viem";
 import { BASE_CHAIN_ID } from "@/lib/constants";
 import { truncateAddress } from "@/lib/format";
 
-const activationData = toHex("x402:dustlift:builder-activate:v1");
+const x402Data = toHex("x402:dustlift:agent-payment:v1");
+const DEFAULT_X402_PAYMENT_WEI = 1_000_000_000_000n; // 0.000001 ETH
 
-function getActivationRecipient(): `0x${string}` | null {
+function getPaymentRecipient(): `0x${string}` | null {
   const value =
+    process.env.NEXT_PUBLIC_X402_PAYMENT_RECIPIENT ??
     process.env.NEXT_PUBLIC_BUILDER_ACTIVATION_RECIPIENT ??
     process.env.NEXT_PUBLIC_FEE_RECIPIENT ??
     "";
 
   return isAddress(value) ? (value.toLowerCase() as `0x${string}`) : null;
+}
+
+function getPaymentValue(): bigint {
+  const value = process.env.NEXT_PUBLIC_X402_PAYMENT_WEI ?? "";
+
+  try {
+    return value ? BigInt(value) : DEFAULT_X402_PAYMENT_WEI;
+  } catch {
+    return DEFAULT_X402_PAYMENT_WEI;
+  }
 }
 
 export function BuilderActivatePanel() {
@@ -28,21 +40,24 @@ export function BuilderActivatePanel() {
   const { sendTransactionAsync } = useSendTransaction();
   const { switchChainAsync } = useSwitchChain();
 
-  const recipient = useMemo(() => getActivationRecipient(), []);
+  const recipient = useMemo(() => getPaymentRecipient(), []);
+  const paymentValue = useMemo(() => getPaymentValue(), []);
   const builderCode = process.env.NEXT_PUBLIC_BASE_BUILDER_CODE;
 
   const [status, setStatus] = useState<
-    "idle" | "switching" | "sending" | "done" | "error"
+    "idle" | "switching" | "sending" | "unlocking" | "done" | "error"
   >("idle");
   const [hash, setHash] = useState<`0x${string}` | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resourceReady, setResourceReady] = useState(false);
 
-  async function activateBuilder() {
+  async function payForAgentResource() {
     setError(null);
+    setResourceReady(false);
 
     if (!recipient) {
       setStatus("error");
-      setError("Activation recipient is not configured.");
+      setError("x402 payment recipient is not configured.");
       return;
     }
 
@@ -57,15 +72,21 @@ export function BuilderActivatePanel() {
     try {
       const txHash = await sendTransactionAsync({
         to: recipient,
-        data: activationData,
-        value: 0n,
+        data: x402Data,
+        value: paymentValue,
       });
       setHash(txHash);
       await publicClient?.waitForTransactionReceipt({ hash: txHash });
+
+      setStatus("unlocking");
+      if (address) {
+        await fetch(`/api/activity?address=${address}`);
+      }
+      setResourceReady(true);
       setStatus("done");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Activation failed");
+      setError(err instanceof Error ? err.message : "x402 payment failed");
     }
   }
 
@@ -73,7 +94,7 @@ export function BuilderActivatePanel() {
     return (
       <div className="rounded-2xl border border-[#3d4a3f]/60 bg-[#1a211c]/80 p-8 text-center">
         <p className="text-lg text-[#c5cdc6]">
-          Connect your wallet to activate builder activity.
+          Connect your wallet to run the x402 payment flow.
         </p>
       </div>
     );
@@ -81,35 +102,46 @@ export function BuilderActivatePanel() {
 
   return (
     <section className="flex flex-col gap-5 rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/90 p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">
-            Base x402
+            x402 payment flow
           </p>
           <h2 className="font-serif text-2xl italic text-[#e8e4dc]">
-            Builder Activate
+            Pay once, unlock data
           </h2>
-          <p className="mt-2 max-w-xl text-sm text-[#a8b0a4]">
-            Sends a 0 ETH Base transaction with DustLift activation data. You
-            only pay network gas.
-          </p>
+          <div className="mt-3 max-w-xl space-y-2 text-sm text-[#a8b0a4]">
+            <p>x402 is not a token. It is an AI + API + onchain payment pattern.</p>
+            <p>Agent asks for data, wallet pays on Base, API result unlocks.</p>
+            <p>No subscription. No user API key. Direct payment flow.</p>
+          </div>
         </div>
         <button
           type="button"
-          onClick={activateBuilder}
-          disabled={status === "switching" || status === "sending"}
+          onClick={payForAgentResource}
+          disabled={
+            status === "switching" ||
+            status === "sending" ||
+            status === "unlocking"
+          }
           className="rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white disabled:opacity-50"
         >
           {status === "switching" && "Switching..."}
-          {status === "sending" && "Sending..."}
+          {status === "sending" && "Paying..."}
+          {status === "unlocking" && "Unlocking..."}
           {status !== "switching" &&
             status !== "sending" &&
-            (chainId === BASE_CHAIN_ID ? "Activate Builder" : "Switch to Base")}
+            status !== "unlocking" &&
+            (chainId === BASE_CHAIN_ID ? "Pay & Unlock" : "Switch to Base")}
         </button>
       </div>
 
-      <div className="grid gap-3 text-sm sm:grid-cols-3">
+      <div className="grid gap-3 text-sm sm:grid-cols-4">
         <StatusItem label="Wallet" value={truncateAddress(address ?? "")} />
+        <StatusItem
+          label="Payment"
+          value={`${formatEther(paymentValue)} ETH`}
+        />
         <StatusItem
           label="Recipient"
           value={recipient ? truncateAddress(recipient) : "Missing"}
@@ -120,6 +152,18 @@ export function BuilderActivatePanel() {
         />
       </div>
 
+      <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-4">
+        <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">
+          Resource
+        </p>
+        <p className="mt-1 text-[#e8e4dc]">Base activity + Guild badge digest</p>
+        <p className="mt-2 text-sm text-[#8a9a8c]">
+          This turns the lower activity panel into a payment-gated API product:
+          the wallet creates a real onchain payment signal, then receives the
+          data package.
+        </p>
+      </div>
+
       {hash && (
         <a
           href={`https://basescan.org/tx/${hash}`}
@@ -127,13 +171,13 @@ export function BuilderActivatePanel() {
           rel="noreferrer"
           className="text-sm text-[#6b8f71] hover:underline"
         >
-          View activation transaction
+          View x402 payment transaction
         </a>
       )}
 
-      {status === "done" && (
+      {resourceReady && (
         <p className="text-sm text-[#6b8f71]">
-          Builder activation transaction confirmed.
+          Payment confirmed. Activity and Guild data are unlocked below.
         </p>
       )}
 
