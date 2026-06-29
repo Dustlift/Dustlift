@@ -154,6 +154,20 @@ function isDecimalInput(value: string): boolean {
   return /^\d*\.?\d*$/.test(value);
 }
 
+function buildQuoteKey(
+  owner: string,
+  sell: TokenOption,
+  buy: TokenOption,
+  parsedAmount: bigint,
+): string {
+  return [
+    owner.toLowerCase(),
+    sell.address.toLowerCase(),
+    buy.address.toLowerCase(),
+    parsedAmount.toString(),
+  ].join(":");
+}
+
 export function SwapPanel() {
   const { address, chainId, isConnected } = useAccount();
   const { data: ethBalance, refetch: refetchEthBalance } = useBalance({
@@ -174,6 +188,7 @@ export function SwapPanel() {
   const [status, setStatus] = useState<Status>("idle");
   const [hash, setHash] = useState<`0x${string}` | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coreBalances, setCoreBalances] = useState<Record<string, bigint>>({});
   const [agentPrompt, setAgentPrompt] = useState("0.001 ETH ile USDC al");
   const [agentStatus, setAgentStatus] = useState<
     "idle" | "thinking" | "done" | "error"
@@ -210,14 +225,24 @@ export function SwapPanel() {
     [tokens],
   );
 
+  const popularTokenOptions = useMemo(
+    () =>
+      POPULAR_BASE_TOKENS.map((token) => ({
+        ...token,
+        balance:
+          coreBalances[token.address.toLowerCase()] ?? token.balance ?? 0n,
+      })),
+    [coreBalances],
+  );
+
   const sellOptions = useMemo(
-    () => mergeTokenOptions([ethToken, ...walletTokenOptions, ...POPULAR_BASE_TOKENS]),
-    [ethToken, walletTokenOptions],
+    () => mergeTokenOptions([ethToken, ...walletTokenOptions, ...popularTokenOptions]),
+    [ethToken, popularTokenOptions, walletTokenOptions],
   );
 
   const buyOptions = useMemo(
-    () => mergeTokenOptions([ethToken, ...POPULAR_BASE_TOKENS, ...walletTokenOptions]),
-    [ethToken, walletTokenOptions],
+    () => mergeTokenOptions([ethToken, ...popularTokenOptions, ...walletTokenOptions]),
+    [ethToken, popularTokenOptions, walletTokenOptions],
   );
 
   const agentTokens = useMemo(
@@ -318,6 +343,28 @@ export function SwapPanel() {
     setStatus((current) => (current === "done" || current === "error" ? "idle" : current));
   }, []);
 
+  const refreshCoreBalances = useCallback(async () => {
+    if (!address || !publicClient) return;
+
+    const entries = await Promise.all(
+      POPULAR_BASE_TOKENS.map(async (token) => {
+        try {
+          const balance = await publicClient.readContract({
+            address: token.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [address],
+          });
+          return [token.address.toLowerCase(), balance] as const;
+        } catch {
+          return [token.address.toLowerCase(), 0n] as const;
+        }
+      }),
+    );
+
+    setCoreBalances(Object.fromEntries(entries));
+  }, [address, publicClient]);
+
   const loadTokens = useCallback(
     async (quiet = false) => {
       if (!address) return;
@@ -355,41 +402,53 @@ export function SwapPanel() {
     if (!address) return;
     const timeout = window.setTimeout(() => {
       void loadTokens(true);
+      void refreshCoreBalances();
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [address, loadTokens]);
+  }, [address, loadTokens, refreshCoreBalances]);
 
-  const fetchQuote = useCallback(async () => {
-    if (!address || !selectedSell || !selectedBuy || !sellAmount || !canQuote) {
-      return;
-    }
+  const fetchQuoteForTrade = useCallback(async (
+    sell: TokenOption,
+    buy: TokenOption,
+    parsedAmount: bigint,
+  ): Promise<SwapQuote> => {
+    if (!address) throw new Error("Wallet not connected.");
 
     setError(null);
     setHash(null);
     setQuote(null);
     setQuoteKey("");
     setStatus("quoting");
-    const requestQuoteKey = currentQuoteKey;
+
+    const requestQuoteKey = buildQuoteKey(address, sell, buy, parsedAmount);
+    const search = new URLSearchParams({
+      sellToken: sell.address,
+      buyToken: buy.address,
+      sellAmount: parsedAmount.toString(),
+      taker: address,
+    });
+    const res = await fetch(`/api/quote?${search.toString()}`);
+    const data = (await res.json()) as SwapQuote & { error?: string };
+    if (!res.ok) throw new Error(data.error ?? "No quote available");
+
+    setQuote(data);
+    setQuoteKey(requestQuoteKey);
+    setStatus("idle");
+    return data;
+  }, [address]);
+
+  const fetchQuote = useCallback(async () => {
+    if (!address || !selectedSell || !selectedBuy || !sellAmount || !canQuote) {
+      return;
+    }
 
     try {
-      const search = new URLSearchParams({
-        sellToken: selectedSell.address,
-        buyToken: selectedBuy.address,
-        sellAmount: sellAmount.toString(),
-        taker: address,
-      });
-      const res = await fetch(`/api/quote?${search.toString()}`);
-      const data = (await res.json()) as SwapQuote & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "No quote available");
-
-      setQuote(data);
-      setQuoteKey(requestQuoteKey);
-      setStatus("idle");
+      await fetchQuoteForTrade(selectedSell, selectedBuy, sellAmount);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Quote failed");
     }
-  }, [address, canQuote, currentQuoteKey, selectedBuy, selectedSell, sellAmount]);
+  }, [address, canQuote, fetchQuoteForTrade, selectedBuy, selectedSell, sellAmount]);
 
   useEffect(() => {
     if (!canQuote) return;
@@ -467,6 +526,16 @@ export function SwapPanel() {
       const nextAmount = data.useMax
         ? formatUnits(getSpendableBalanceFor(nextSell), nextSell.decimals)
         : (data.amount ?? "");
+      const parsedAmount = parseUnits(nextAmount, nextSell.decimals);
+      const balance = getSpendableBalanceFor(nextSell);
+
+      if (parsedAmount <= 0n) {
+        throw new Error("Agent amount is zero.");
+      }
+
+      if (balance < parsedAmount) {
+        throw new Error(`Insufficient ${nextSell.symbol} balance.`);
+      }
 
       setSellAddress(nextSell.address);
       setBuyAddress(nextBuy.address);
@@ -474,15 +543,69 @@ export function SwapPanel() {
       resetTradeState();
       setAgentPrompt(prompt);
       setAgentMessage(
-        `Agent prepared: ${data.summary ?? `${nextAmount} ${nextSell.symbol} -> ${nextBuy.symbol}`}. Review the quote before signing.`,
+        `Agent prepared: ${data.summary ?? `${nextAmount} ${nextSell.symbol} -> ${nextBuy.symbol}`}. Opening wallet approval now.`,
       );
+      const agentQuote = await fetchQuoteForTrade(nextSell, nextBuy, parsedAmount);
+      await executeQuotedSwap(agentQuote, nextSell, parsedAmount);
       setAgentStatus("done");
+      setAgentMessage(
+        `Agent swap complete: ${data.summary ?? `${nextAmount} ${nextSell.symbol} -> ${nextBuy.symbol}`}.`,
+      );
     } catch (err) {
       setAgentStatus("error");
       setAgentMessage(
         err instanceof Error ? err.message : "Agent command failed",
       );
     }
+  }
+
+  async function executeQuotedSwap(
+    swapQuote: SwapQuote,
+    sell: TokenOption,
+    parsedAmount: bigint,
+  ) {
+    if (!address || !publicClient) {
+      throw new Error("Wallet client is not ready.");
+    }
+
+    if (chainId !== BASE_CHAIN_ID) {
+      await switchChainAsync({ chainId: BASE_CHAIN_ID });
+    }
+
+    if (!sell.isNative) {
+      if (!swapQuote.allowanceTarget) {
+        throw new Error("Approval target is missing from the quote.");
+      }
+
+      const allowance = await publicClient.readContract({
+        address: sell.address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [address, swapQuote.allowanceTarget],
+      });
+
+      if (allowance < parsedAmount) {
+        setStatus("approving");
+        const approveHash = await writeContractAsync({
+          address: sell.address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [swapQuote.allowanceTarget, parsedAmount],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
+    }
+
+    setStatus("swapping");
+    const txHash = await sendTransactionAsync({
+      to: swapQuote.to,
+      data: swapQuote.data,
+      value: BigInt(swapQuote.value),
+    });
+    setHash(txHash);
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    await Promise.all([loadTokens(true), refreshCoreBalances(), refetchEthBalance()]);
+    setStatus("done");
   }
 
   async function executeSwap() {
@@ -501,45 +624,7 @@ export function SwapPanel() {
     setError(null);
 
     try {
-      if (chainId !== BASE_CHAIN_ID) {
-        await switchChainAsync({ chainId: BASE_CHAIN_ID });
-      }
-
-      if (!selectedSell.isNative) {
-        if (!quote.allowanceTarget) {
-          throw new Error("Approval target is missing from the quote.");
-        }
-
-        const allowance = await publicClient.readContract({
-          address: selectedSell.address,
-          abi: erc20Abi,
-          functionName: "allowance",
-          args: [address, quote.allowanceTarget],
-        });
-
-        if (allowance < sellAmount) {
-          setStatus("approving");
-          const approveHash = await writeContractAsync({
-            address: selectedSell.address,
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [quote.allowanceTarget, sellAmount],
-          });
-          await publicClient.waitForTransactionReceipt({ hash: approveHash });
-        }
-      }
-
-      setStatus("swapping");
-      const txHash = await sendTransactionAsync({
-        to: quote.to,
-        data: quote.data,
-        value: BigInt(quote.value),
-      });
-      setHash(txHash);
-      await publicClient.waitForTransactionReceipt({ hash: txHash });
-      await loadTokens(true);
-      await refetchEthBalance();
-      setStatus("done");
+      await executeQuotedSwap(quote, selectedSell, sellAmount);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Swap failed");
@@ -571,8 +656,8 @@ export function SwapPanel() {
               AI agent swap
             </p>
             <p className="mt-1 text-sm text-[#8a9a8c]">
-              Tell the agent what to swap. It prepares the route; your wallet
-              still signs the final transaction.
+              Tell the agent what to swap. It prepares the route and opens your
+              wallet; you still approve the final transaction.
             </p>
           </div>
           <div className="flex gap-2">
@@ -584,10 +669,15 @@ export function SwapPanel() {
             />
             <button
               type="submit"
-              disabled={agentStatus === "thinking"}
+              disabled={
+                agentStatus === "thinking" ||
+                status === "quoting" ||
+                status === "approving" ||
+                status === "swapping"
+              }
               className="rounded-xl bg-[#6b8f71] px-4 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-[#7fa385] disabled:opacity-50"
             >
-              {agentStatus === "thinking" ? "Thinking..." : "Prepare"}
+              {agentStatus === "thinking" ? "Thinking..." : "Agent Swap"}
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
