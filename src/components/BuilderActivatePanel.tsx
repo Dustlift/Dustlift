@@ -64,16 +64,10 @@ export function BuilderActivatePanel() {
   const [error, setError] = useState<string | null>(null);
   const [deployError, setDeployError] = useState<string | null>(null);
   const [resourceReady, setResourceReady] = useState(false);
-  const [agentName, setAgentName] = useState("DustLift Agent");
-  const [agentDescription, setAgentDescription] = useState(
-    "AI-assisted Base wallet utility for swaps, wallet activity, and x402 flows.",
-  );
-  const [agentEndpoints, setAgentEndpoints] = useState(
-    "https://dustlift.vercel.app/api/agent-swap\nhttps://dustlift.vercel.app/api/activity",
-  );
-  const [agentLogoUrl, setAgentLogoUrl] = useState(
-    "https://dustlift.vercel.app/icon.png",
-  );
+  const [agentName, setAgentName] = useState("");
+  const [agentDescription, setAgentDescription] = useState("");
+  const [agentEndpoints, setAgentEndpoints] = useState("");
+  const [agentLogoUrl, setAgentLogoUrl] = useState("");
   const [agentSupportsX402, setAgentSupportsX402] = useState(true);
 
   async function payForAgentResource() {
@@ -142,7 +136,7 @@ export function BuilderActivatePanel() {
         .slice(0, 5);
       const deployData = buildAgentIdentityData({
         standard: "erc-8004-style",
-        app: "DustLift",
+        createdVia: "DustLift",
         name,
         description: agentDescription.trim(),
         endpoints,
@@ -248,11 +242,11 @@ export function BuilderActivatePanel() {
               ERC-8004 style on Base
             </span>
             <h3 className="mt-4 font-serif text-2xl italic text-[#e8e4dc]">
-              Deploy Agent Identity
+              Deploy Your Agent Identity
             </h3>
             <p className="mt-2 text-sm text-[#8a9a8c]">
-              Create a small Base identity marker for your app agent. Metadata
-              is embedded in the deploy transaction.
+              Create a small Base identity marker for any agent or service you
+              want to publish. You control the metadata.
             </p>
           </div>
 
@@ -261,7 +255,7 @@ export function BuilderActivatePanel() {
               {agentName.trim() || "Agent Name"}
             </p>
             <p className="mt-1 line-clamp-2 text-xs text-[#8a9a8c]">
-              {agentDescription.trim() || "Agent description will appear here."}
+              {agentDescription.trim() || "Your agent description will appear here."}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-[#8a9a8c]">
               <StatusPill label="Network" value="Base" />
@@ -282,7 +276,7 @@ export function BuilderActivatePanel() {
             onChange={(event) => setAgentName(event.target.value)}
             maxLength={80}
             className="rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
-            placeholder="DustLift Agent"
+            placeholder="BaseHub Research Agent"
           />
 
           <label className="text-xs font-semibold uppercase tracking-wide text-[#6b7a6d]">
@@ -305,7 +299,7 @@ export function BuilderActivatePanel() {
             onChange={(event) => setAgentEndpoints(event.target.value)}
             rows={3}
             className="resize-none rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
-            placeholder="https://example.com/api/agent"
+            placeholder="https://agent.example.com&#10;https://agent.example.com/.well-known/agent-card.json"
           />
 
           <label className="text-xs font-semibold uppercase tracking-wide text-[#6b7a6d]">
@@ -315,7 +309,7 @@ export function BuilderActivatePanel() {
             value={agentLogoUrl}
             onChange={(event) => setAgentLogoUrl(event.target.value)}
             className="rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
-            placeholder="https://dustlift.vercel.app/icon.png"
+            placeholder="https://example.com/logo.png"
           />
 
           <label className="flex items-center gap-2 text-sm text-[#c5cdc6]">
