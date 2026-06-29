@@ -30,17 +30,30 @@ export const metadata: Metadata = {
   description:
     "Scan Base wallet dust and scam tokens, batch-convert to ETH, swap assets, and view Base wallet activity.",
   metadataBase: new URL(appUrl),
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
   openGraph: {
     title: APP_NAME,
     description: APP_TAGLINE,
     url: appUrl,
     siteName: APP_NAME,
     type: "website",
+    images: [
+      {
+        url: "/icon.png",
+        width: 1024,
+        height: 1024,
+        alt: APP_NAME,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: APP_NAME,
     description: APP_TAGLINE,
+    images: ["/icon.png"],
   },
   other: {
     "base:app_id": baseAppId,
