@@ -1,6 +1,6 @@
 # DustLift
 
-Wallet cleanup and swap assistant for Base: scan ERC-20 dust and scam leftovers, batch-convert sellable dust to ETH, swap Base assets, and view wallet activity rank.
+Wallet cleanup and agent swap assistant for Base: scan ERC-20 dust, let an agent prepare swaps, batch-convert sellable dust to ETH, and unlock wallet activity data through onchain payment.
 
 ## Features
 
@@ -10,7 +10,9 @@ Wallet cleanup and swap assistant for Base: scan ERC-20 dust and scam leftovers,
 - Sellability check: 0x liquidity check; skips tokens with no usable output
 - Batch sweep: EIP-5792 `wallet_sendCalls` when supported
 - Sequential fallback: works in wallets without batch support
+- Agent Swap: natural-language swap intent parser that prepares 0x quotes
 - Swap: ETH to token and token to ETH via 0x
+- x402 demo: small onchain payment flow for agent-readable API/data access
 - Creator commission: 0x integrator fee on successful swaps
 - Base activity: local Base wallet activity plus optional Dune leaderboard data
 - Base Guild: public Guild badge list with Dune-based unlock estimates
@@ -31,6 +33,8 @@ npm run dev
 | `FEE_RECIPIENT` | Creator wallet, server-side fee recipient |
 | `NEXT_PUBLIC_FEE_RECIPIENT` | Same creator wallet, shown in UI |
 | `FEE_BPS` | Fee rate in basis points, 75 = 0.75% |
+| `NEXT_PUBLIC_X402_PAYMENT_RECIPIENT` | Optional x402 demo payment recipient |
+| `NEXT_PUBLIC_X402_PAYMENT_WEI` | Optional x402 demo payment amount |
 | `DUNE_API_KEY` | Optional Dune API key for activity leaderboard |
 | `DUNE_BASE_ACTIVITY_QUERY_ID` | Optional Dune query id for Base activity rank |
 | `DUNE_BASE_ACTIVITY_LIMIT` | Optional latest-result row limit, default 1000 |

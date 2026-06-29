@@ -108,11 +108,11 @@ export function BuilderActivatePanel() {
             x402 payment flow
           </p>
           <h2 className="font-serif text-2xl italic text-[#e8e4dc]">
-            Pay once, unlock data
+            Agent calls, pays, receives
           </h2>
           <div className="mt-3 max-w-xl space-y-2 text-sm text-[#a8b0a4]">
             <p>x402 is not a token. It is an AI + API + onchain payment pattern.</p>
-            <p>Agent asks for data, wallet pays on Base, API result unlocks.</p>
+            <p>The swap agent prepares intent. This payment unlocks the data/API side.</p>
             <p>No subscription. No user API key. Direct payment flow.</p>
           </div>
         </div>
@@ -156,11 +156,10 @@ export function BuilderActivatePanel() {
         <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">
           Resource
         </p>
-        <p className="mt-1 text-[#e8e4dc]">Base activity + Guild badge digest</p>
+        <p className="mt-1 text-[#e8e4dc]">Agent-ready Base data package</p>
         <p className="mt-2 text-sm text-[#8a9a8c]">
-          This turns the lower activity panel into a payment-gated API product:
-          the wallet creates a real onchain payment signal, then receives the
-          data package.
+          The same pattern can gate quote enrichment, wallet scoring, Guild
+          checks, or any agent-readable API response behind a Base payment.
         </p>
       </div>
 

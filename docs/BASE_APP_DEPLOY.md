@@ -11,6 +11,8 @@ ZEROX_API_KEY=...
 FEE_RECIPIENT=0xYourWallet
 NEXT_PUBLIC_FEE_RECIPIENT=0xYourWallet
 FEE_BPS=75
+NEXT_PUBLIC_X402_PAYMENT_RECIPIENT=0xYourWallet
+NEXT_PUBLIC_X402_PAYMENT_WEI=1000000000000
 DUNE_API_KEY=
 DUNE_BASE_ACTIVITY_QUERY_ID=
 DUNE_BASE_ACTIVITY_LIMIT=1000
@@ -40,7 +42,7 @@ Or connect the GitHub repo to Vercel. After first deploy, update `NEXT_PUBLIC_AP
 |---|---|
 | Name | DustLift |
 | Tagline | Turn wallet dust into ETH on Base |
-| Description | Scan wallet dust, batch-convert sellable tokens to ETH, swap Base assets, view Base rank, and check Guild badges |
+| Description | Scan wallet dust, let an agent prepare swaps, batch-convert sellable tokens to ETH, view Base rank, and check Guild badges |
 | Category | DeFi |
 | Primary URL | Your Vercel URL |
 | Icon | 1024x1024 PNG |
@@ -54,8 +56,9 @@ Or connect the GitHub repo to Vercel. After first deploy, update `NEXT_PUBLIC_AP
 1. Open Base App on mobile.
 2. Navigate to your app URL or search by name.
 3. Connect wallet.
-4. Run a tiny ETH -> USDC swap.
-5. Run a tiny dust -> ETH sweep if sellable dust is found.
+4. Try Agent Swap with `0.001 ETH ile USDC al`.
+5. Run a tiny ETH -> USDC swap.
+6. Run a tiny dust -> ETH sweep if sellable dust is found.
 
 ## 5. Commission Verification
 

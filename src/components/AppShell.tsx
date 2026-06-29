@@ -23,8 +23,8 @@ export function AppShell() {
             DustLift
           </h1>
           <p className="mt-2 max-w-md text-[#a8b0a4]">
-            Scan dust &amp; scam leftovers, batch-convert to ETH, and swap Base
-            assets.
+            Scan dust, let an agent prepare Base swaps, and unlock activity
+            data through onchain payment.
           </p>
         </div>
         <WalletStatus />
@@ -34,8 +34,8 @@ export function AppShell() {
         {(
           [
             ["dust", "Dust -> ETH"],
-            ["swap", "Swap"],
-            ["builder", "Builder"],
+            ["swap", "Agent Swap"],
+            ["builder", "x402"],
           ] as const
         ).map(([id, label]) => (
           <button

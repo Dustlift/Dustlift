@@ -46,6 +46,20 @@ type TokenOption = {
   isNative?: boolean;
 };
 
+type AgentSwapResponse = {
+  sellToken?: AgentToken;
+  buyToken?: AgentToken;
+  amount?: string | null;
+  useMax?: boolean;
+  summary?: string;
+  error?: string;
+};
+
+type AgentToken = {
+  address: Address;
+  symbol: string;
+};
+
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 const AERO_BASE = "0x940181a94A35A4569E4529A3CDfB74e38FD98631" as const;
 const CBBTC_BASE = "0xcbB7C0000aB88B473b1f5aFD9ef808440eed33Bf" as const;
@@ -160,6 +174,11 @@ export function SwapPanel() {
   const [status, setStatus] = useState<Status>("idle");
   const [hash, setHash] = useState<`0x${string}` | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agentPrompt, setAgentPrompt] = useState("0.001 ETH ile USDC al");
+  const [agentStatus, setAgentStatus] = useState<
+    "idle" | "thinking" | "done" | "error"
+  >("idle");
+  const [agentMessage, setAgentMessage] = useState<string | null>(null);
 
   const ethToken = useMemo<TokenOption>(
     () => ({
@@ -199,6 +218,15 @@ export function SwapPanel() {
   const buyOptions = useMemo(
     () => mergeTokenOptions([ethToken, ...POPULAR_BASE_TOKENS, ...walletTokenOptions]),
     [ethToken, walletTokenOptions],
+  );
+
+  const agentTokens = useMemo(
+    () =>
+      mergeTokenOptions([...sellOptions, ...buyOptions]).map((token) => ({
+        address: token.address,
+        symbol: token.symbol,
+      })),
+    [buyOptions, sellOptions],
   );
 
   const selectedSell = useMemo(
@@ -275,6 +303,12 @@ export function SwapPanel() {
     : sellAmount && !hasEnoughBalance
       ? "Insufficient balance."
       : null;
+
+  function getSpendableBalanceFor(option: TokenOption): bigint {
+    if (!option.balance) return 0n;
+    if (!option.isNative) return option.balance;
+    return option.balance > ETH_GAS_RESERVE ? option.balance - ETH_GAS_RESERVE : 0n;
+  }
 
   const resetTradeState = useCallback(() => {
     setQuote(null);
@@ -395,6 +429,62 @@ export function SwapPanel() {
     resetTradeState();
   }
 
+  async function runAgentSwap(command?: string) {
+    const prompt = (command ?? agentPrompt).trim();
+    if (!prompt) return;
+
+    setAgentStatus("thinking");
+    setAgentMessage(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/agent-swap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          tokens: agentTokens,
+        }),
+      });
+      const data = (await res.json()) as AgentSwapResponse;
+      if (!res.ok) throw new Error(data.error ?? "Agent could not parse command");
+
+      const nextSell = sellOptions.find(
+        (token) =>
+          data.sellToken &&
+          sameTokenAddress(token.address, data.sellToken.address),
+      );
+      const nextBuy = buyOptions.find(
+        (token) =>
+          data.buyToken &&
+          sameTokenAddress(token.address, data.buyToken.address),
+      );
+
+      if (!nextSell || !nextBuy) {
+        throw new Error("Agent selected a token that is not available.");
+      }
+
+      const nextAmount = data.useMax
+        ? formatUnits(getSpendableBalanceFor(nextSell), nextSell.decimals)
+        : (data.amount ?? "");
+
+      setSellAddress(nextSell.address);
+      setBuyAddress(nextBuy.address);
+      setAmount(nextAmount);
+      resetTradeState();
+      setAgentPrompt(prompt);
+      setAgentMessage(
+        `Agent prepared: ${data.summary ?? `${nextAmount} ${nextSell.symbol} -> ${nextBuy.symbol}`}. Review the quote before signing.`,
+      );
+      setAgentStatus("done");
+    } catch (err) {
+      setAgentStatus("error");
+      setAgentMessage(
+        err instanceof Error ? err.message : "Agent command failed",
+      );
+    }
+  }
+
   async function executeSwap() {
     if (
       !address ||
@@ -468,6 +558,69 @@ export function SwapPanel() {
 
   return (
     <section className="mx-auto flex w-full max-w-xl flex-col gap-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void runAgentSwap();
+        }}
+        className="rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/95 p-4"
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">
+              AI agent swap
+            </p>
+            <p className="mt-1 text-sm text-[#8a9a8c]">
+              Tell the agent what to swap. It prepares the route; your wallet
+              still signs the final transaction.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={agentPrompt}
+              onChange={(event) => setAgentPrompt(event.target.value)}
+              placeholder="0.001 ETH ile USDC al"
+              className="min-w-0 flex-1 rounded-xl border border-[#3d4a3f] bg-[#101611] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
+            />
+            <button
+              type="submit"
+              disabled={agentStatus === "thinking"}
+              className="rounded-xl bg-[#6b8f71] px-4 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-[#7fa385] disabled:opacity-50"
+            >
+              {agentStatus === "thinking" ? "Thinking..." : "Prepare"}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {["0.001 ETH ile USDC al", "Max USDC sat ETH al", "0.01 ETH ile AERO al"].map(
+              (example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() => {
+                    setAgentPrompt(example);
+                    void runAgentSwap(example);
+                  }}
+                  className="rounded-full border border-[#3d4a3f] px-3 py-1 text-xs text-[#a8b0a4] hover:bg-[#1a211c]"
+                >
+                  {example}
+                </button>
+              ),
+            )}
+          </div>
+          {agentMessage && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                agentStatus === "error"
+                  ? "border-red-900/50 bg-red-950/30 text-red-300"
+                  : "border-[#6b8f71]/40 bg-[#1f2a21]/60 text-[#a8d5ad]"
+              }`}
+            >
+              {agentMessage}
+            </div>
+          )}
+        </div>
+      </form>
+
       <div className="rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/95 p-4">
         <label className="text-sm text-[#8a9a8c]">Sell</label>
         <div className="mt-2 flex items-center gap-3">
