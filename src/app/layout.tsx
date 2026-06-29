@@ -23,6 +23,8 @@ const playfair = Playfair_Display({
 const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ?? "https://base-dust-sweep.vercel.app";
 
+const baseAppId = "6a3f13295e3e3d1418bc2d18";
+
 export const metadata: Metadata = {
   title: `${APP_NAME} - ${APP_TAGLINE}`,
   description:
@@ -39,6 +41,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: APP_NAME,
     description: APP_TAGLINE,
+  },
+  other: {
+    "base:app_id": baseAppId,
   },
 };
 
