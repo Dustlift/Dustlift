@@ -239,14 +239,14 @@ export function BuilderActivatePanel() {
         <div className="flex flex-col justify-between gap-4">
           <div>
             <span className="inline-flex rounded-full border border-[#2dbf72]/50 bg-[#123321] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#79e0a2]">
-              ERC-8004 style on Base
+              Agent identity on Base
             </span>
             <h3 className="mt-4 font-serif text-2xl italic text-[#e8e4dc]">
               Deploy Your Agent Identity
             </h3>
             <p className="mt-2 text-sm text-[#8a9a8c]">
-              Create a small Base identity marker for any agent or service you
-              want to publish. You control the metadata.
+              Publish a lightweight onchain profile for any AI agent or service.
+              You choose the name, endpoints, logo, and x402 support.
             </p>
           </div>
 
@@ -276,7 +276,7 @@ export function BuilderActivatePanel() {
             onChange={(event) => setAgentName(event.target.value)}
             maxLength={80}
             className="rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d]"
-            placeholder="BaseHub Research Agent"
+            placeholder="My Trading Agent"
           />
 
           <label className="text-xs font-semibold uppercase tracking-wide text-[#6b7a6d]">
