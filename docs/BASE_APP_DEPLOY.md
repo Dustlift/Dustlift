@@ -42,7 +42,7 @@ Or connect the GitHub repo to Vercel. After first deploy, update `NEXT_PUBLIC_AP
 |---|---|
 | Name | DustLift |
 | Tagline | Turn wallet dust into ETH on Base |
-| Description | Scan wallet dust, let an agent prepare swaps, batch-convert sellable tokens to ETH, view Base rank, and check Guild badges |
+| Description | Scan wallet dust, let an agent prepare swaps, batch-convert sellable tokens to ETH, view Base wallet activity, and open Base Guild badge checks |
 | Category | DeFi |
 | Primary URL | Your Vercel URL |
 | Icon | 1024x1024 PNG |

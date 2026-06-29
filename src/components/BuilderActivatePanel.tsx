@@ -13,6 +13,7 @@ import { truncateAddress } from "@/lib/format";
 
 const x402Data = toHex("x402:dustlift:agent-payment:v1");
 const DEFAULT_X402_PAYMENT_WEI = 1_000_000_000_000n; // 0.000001 ETH
+const QUICK_DEPLOY_INIT_CODE = "0x6001600c60003960016000f300" as const;
 
 function getPaymentRecipient(): `0x${string}` | null {
   const value =
@@ -47,8 +48,16 @@ export function BuilderActivatePanel() {
   const [status, setStatus] = useState<
     "idle" | "switching" | "sending" | "unlocking" | "done" | "error"
   >("idle");
+  const [deployStatus, setDeployStatus] = useState<
+    "idle" | "switching" | "deploying" | "done" | "error"
+  >("idle");
   const [hash, setHash] = useState<`0x${string}` | null>(null);
+  const [deployHash, setDeployHash] = useState<`0x${string}` | null>(null);
+  const [deployedAddress, setDeployedAddress] = useState<`0x${string}` | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
   const [resourceReady, setResourceReady] = useState(false);
 
   async function payForAgentResource() {
@@ -87,6 +96,35 @@ export function BuilderActivatePanel() {
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "x402 payment failed");
+    }
+  }
+
+  async function quickDeployContract() {
+    setDeployError(null);
+    setDeployedAddress(null);
+
+    if (chainId !== BASE_CHAIN_ID) {
+      setDeployStatus("switching");
+      await switchChainAsync({ chainId: BASE_CHAIN_ID });
+      setDeployStatus("idle");
+      return;
+    }
+
+    setDeployStatus("deploying");
+    try {
+      const txHash = await sendTransactionAsync({
+        data: QUICK_DEPLOY_INIT_CODE,
+        value: 0n,
+      });
+      setDeployHash(txHash);
+      const receipt = await publicClient?.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      setDeployedAddress(receipt?.contractAddress ?? null);
+      setDeployStatus("done");
+    } catch (err) {
+      setDeployStatus("error");
+      setDeployError(err instanceof Error ? err.message : "Contract deploy failed");
     }
   }
 
@@ -163,6 +201,37 @@ export function BuilderActivatePanel() {
         </p>
       </div>
 
+      <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">
+              Builder activity
+            </p>
+            <p className="mt-1 text-[#e8e4dc]">Deploy a tiny Base contract</p>
+            <p className="mt-2 max-w-xl text-sm text-[#8a9a8c]">
+              Quick Deploy creates a minimal marker contract on Base. Wallet gas
+              approval is required.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={quickDeployContract}
+            disabled={
+              deployStatus === "switching" || deployStatus === "deploying"
+            }
+            className="rounded-xl border border-[#6b8f71]/50 px-5 py-3 text-sm font-semibold text-[#c5cdc6] transition hover:bg-[#1a211c] disabled:opacity-50"
+          >
+            {deployStatus === "switching" && "Switching..."}
+            {deployStatus === "deploying" && "Deploying..."}
+            {deployStatus !== "switching" &&
+              deployStatus !== "deploying" &&
+              (chainId === BASE_CHAIN_ID
+                ? "Quick Deploy Contract"
+                : "Switch to Base")}
+          </button>
+        </div>
+      </div>
+
       {hash && (
         <a
           href={`https://basescan.org/tx/${hash}`}
@@ -174,15 +243,38 @@ export function BuilderActivatePanel() {
         </a>
       )}
 
+      {deployHash && (
+        <a
+          href={`https://basescan.org/tx/${deployHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm text-[#6b8f71] hover:underline"
+        >
+          View contract deploy transaction
+        </a>
+      )}
+
       {resourceReady && (
         <p className="text-sm text-[#6b8f71]">
           Payment confirmed. Activity and Guild data are unlocked below.
         </p>
       )}
 
+      {deployedAddress && (
+        <p className="text-sm text-[#6b8f71]">
+          Contract deployed: {truncateAddress(deployedAddress)}
+        </p>
+      )}
+
       {error && (
         <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
           {error}
+        </div>
+      )}
+
+      {deployError && (
+        <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+          {deployError}
         </div>
       )}
     </section>

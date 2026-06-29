@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       fetchLocalActivity(address),
       fetchDuneActivity(address),
     ]);
-    const guild = await fetchGuildBadges(dune, local);
+    const guild = await fetchGuildBadges();
 
     return NextResponse.json({ address, local, dune, guild });
   } catch (err) {
@@ -395,12 +395,6 @@ type GuildResponse = {
   rewards?: GuildReward[];
 };
 
-type ActivityMetrics = {
-  txCount?: number | null;
-  contractCount?: number | null;
-  activeDays?: number | null;
-};
-
 function isPublicGuildReward(name: string): boolean {
   const lower = name.toLowerCase();
   return !(
@@ -412,47 +406,7 @@ function isPublicGuildReward(name: string): boolean {
   );
 }
 
-function getTransactionThreshold(name: string): number | null {
-  const match = name.match(/Based:\s*([\d,]+)\s*transactions/i);
-  if (!match) return null;
-  return Number(match[1].replace(/,/g, ""));
-}
-
-function classifyGuildBadge(
-  name: string,
-  metrics: ActivityMetrics,
-): { status: "unlocked" | "locked" | "check"; reason: string } {
-  const txCount = metrics.txCount ?? 0;
-  const threshold = getTransactionThreshold(name);
-
-  if (threshold != null) {
-    return txCount >= threshold
-      ? { status: "unlocked", reason: `${threshold}+ Base tx` }
-      : { status: "locked", reason: `${threshold}+ Base tx needed` };
-  }
-
-  if (["Connected", "Based", "Onchain"].includes(name)) {
-    return txCount > 0
-      ? { status: "unlocked", reason: "Base activity found" }
-      : { status: "locked", reason: "No Base tx found" };
-  }
-
-  return {
-    status: "check",
-    reason: "Check on Guild",
-  };
-}
-
-async function fetchGuildBadges(
-  dune: ActivityMetrics,
-  local: ActivityMetrics,
-) {
-  const metrics = {
-    txCount: dune.txCount ?? local.txCount,
-    contractCount: dune.contractCount ?? local.contractCount,
-    activeDays: dune.activeDays ?? local.activeDays,
-  };
-
+async function fetchGuildBadges() {
   const res = await fetch(GUILD_BASE_API, {
     headers: { accept: "application/json" },
     next: { revalidate: 300 },
@@ -474,21 +428,16 @@ async function fetchGuildBadges(
     .map((reward) => {
       const name = reward.ui?.displayName?.trim() ?? "";
       if (!name || !isPublicGuildReward(name)) return null;
-      const status = classifyGuildBadge(name, metrics);
       return {
         id: reward.id ?? reward.data?.roleId ?? name,
         name,
         type: reward.type ?? "GUILD",
         imageUrl: reward.ui?.imageUrl ?? reward.ui?.imgUrl ?? null,
-        ...status,
+        reason: "Check eligibility on Guild",
       };
     })
     .filter((badge): badge is NonNullable<typeof badge> => badge != null)
-    .sort((a, b) => {
-      const order = { unlocked: 0, locked: 1, check: 2 };
-      return order[a.status] - order[b.status] || a.name.localeCompare(b.name);
-    })
-    .slice(0, 24);
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     configured: true,

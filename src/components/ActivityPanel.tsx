@@ -30,7 +30,6 @@ type DuneActivity = {
   activeDays?: number | null;
   activeMonths?: number | null;
   firstActivity?: string | null;
-  percentile?: number | null;
   totalWallets?: number | null;
   activeWallets?: number | null;
   guildTasks?: number | null;
@@ -42,7 +41,6 @@ type GuildBadge = {
   name: string;
   type: string;
   imageUrl?: string | null;
-  status: "unlocked" | "locked" | "check";
   reason: string;
 };
 
@@ -67,14 +65,6 @@ function formatNumber(value: number | null | undefined): string {
   }).format(value);
 }
 
-function formatPercent(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "--";
-  const normalized = value > 1 ? value : value * 100;
-  return `${normalized.toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}%`;
-}
-
 function formatDate(value: string | null | undefined): string {
   if (!value) return "--";
   return new Intl.DateTimeFormat("en-US", {
@@ -89,18 +79,25 @@ function formatEth(value: number | null | undefined): string {
   return `${formatNumber(value)} ETH`;
 }
 
+function monthsSince(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const start = new Date(value);
+  if (Number.isNaN(start.getTime())) return null;
+  const now = new Date();
+  const months =
+    (now.getFullYear() - start.getFullYear()) * 12 +
+    (now.getMonth() - start.getMonth());
+  return Math.max(0, months);
+}
+
 export function ActivityPanel() {
   const { address, isConnected } = useAccount();
   const [data, setData] = useState<ActivityResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const activeWalletRatio = useMemo(() => {
-    const active = data?.dune.activeWallets;
-    const total = data?.dune.totalWallets;
-    if (!active || !total) return null;
-    return active / total;
-  }, [data]);
+  const firstActivity = data?.dune.firstActivity ?? data?.local.firstSeen;
+  const walletAgeMonths = useMemo(() => monthsSince(firstActivity), [firstActivity]);
 
   const loadActivity = useCallback(async () => {
     if (!address) return;
@@ -136,7 +133,7 @@ export function ActivityPanel() {
             Base Activity
           </p>
           <h2 className="font-serif text-2xl italic text-[#e8e4dc]">
-            Wallet rank
+            Wallet activity
           </h2>
         </div>
         {isConnected && (
@@ -160,17 +157,15 @@ export function ActivityPanel() {
       {isConnected && (
         <div className="grid gap-3 sm:grid-cols-3">
           <ActivityStat
-            label="Base rank"
+            label="Wallet age"
             value={
-              data?.dune.rowFound && data.dune.rank
-                ? `#${formatNumber(data.dune.rank)}`
-                : data?.dune.configured
-                  ? "Outside sample"
-                  : "Dune pending"
+              walletAgeMonths == null
+                ? "--"
+                : `${formatNumber(walletAgeMonths)} months`
             }
           />
           <ActivityStat
-            label="Native volume"
+            label="Total volume"
             value={formatEth(data?.dune.nativeVolumeEth)}
           />
           <ActivityStat
@@ -178,38 +173,24 @@ export function ActivityPanel() {
             value={formatNumber(data?.dune.contractCount ?? data?.local.contractCount)}
           />
           <ActivityStat
-            label="Base tx"
+            label="Total tx"
             value={formatNumber(data?.dune.txCount ?? data?.local.txCount)}
           />
           <ActivityStat
-            label="Gas paid"
+            label="Total fees"
             value={formatEth(data?.dune.gasFeeEth)}
-          />
-          <ActivityStat
-            label="Active months"
-            value={formatNumber(data?.dune.activeMonths)}
           />
           <ActivityStat
             label="Active days"
             value={formatNumber(data?.dune.activeDays ?? data?.local.activeDays)}
-          />
-          <ActivityStat
-            label="First activity"
-            value={formatDate(data?.dune.firstActivity ?? data?.local.firstSeen)}
-          />
-          <ActivityStat
-            label="Active wallet share"
-            value={formatPercent(activeWalletRatio)}
           />
         </div>
       )}
 
       {data?.dune.configured && !data.dune.rowFound && (
         <p className="mt-3 text-xs text-[#8a9a8c]">
-          Dune row not found after scanning{" "}
-          {formatNumber(data.dune.rowsScanned)} saved rows. Increase
-          `DUNE_BASE_ACTIVITY_MAX_PAGES` or use a Dune query that returns the
-          connected address row directly.
+          Dune did not return this wallet yet, so unavailable fields stay blank.
+          Total tx and contract count can still be filled from Base explorer data.
         </p>
       )}
 
@@ -223,7 +204,7 @@ export function ActivityPanel() {
               <p className="text-xs text-[#6b7a6d]">
                 {data.guild.memberCount
                   ? `${formatNumber(data.guild.memberCount)} Guild members`
-                  : "Guild badge data"}
+                  : "Guild members"}
               </p>
             </div>
             <a
@@ -239,7 +220,11 @@ export function ActivityPanel() {
           {data.guild.badges.length > 0 ? (
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {data.guild.badges.map((badge) => (
-                <BadgeRow key={badge.id} badge={badge} />
+                <BadgeRow
+                  key={badge.id}
+                  badge={badge}
+                  guildUrl={data.guild.url}
+                />
               ))}
             </div>
           ) : (
@@ -252,10 +237,9 @@ export function ActivityPanel() {
 
       {data?.local && (
         <div className="mt-3 grid gap-3 text-xs text-[#6b7a6d] sm:grid-cols-3">
+          <p>First activity: {formatDate(firstActivity)}</p>
           <p>Last seen: {formatDate(data.local.lastSeen)}</p>
-          <p>Sampled tx: {formatNumber(data.local.sampledTxCount)}</p>
-          <p>Sampled contracts: {formatNumber(data.local.contractCount)}</p>
-          <p>Local score: {formatNumber(data.local.score)}</p>
+          <p>Explorer sample: {formatNumber(data.local.sampledTxCount)} tx</p>
         </div>
       )}
 
@@ -277,20 +261,7 @@ function ActivityStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BadgeRow({ badge }: { badge: GuildBadge }) {
-  const statusClass =
-    badge.status === "unlocked"
-      ? "border-[#6b8f71]/50 bg-[#1f2a21] text-[#a8d5ad]"
-      : badge.status === "locked"
-        ? "border-[#3d4a3f]/50 bg-[#101611] text-[#8a9a8c]"
-        : "border-amber-900/40 bg-amber-950/10 text-amber-200/90";
-  const label =
-    badge.status === "unlocked"
-      ? "Unlocked"
-      : badge.status === "locked"
-        ? "Locked"
-        : "Check";
-
+function BadgeRow({ badge, guildUrl }: { badge: GuildBadge; guildUrl: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-[#2a332c] bg-[#101611]/80 px-3 py-2">
       <div className="min-w-0">
@@ -299,11 +270,14 @@ function BadgeRow({ badge }: { badge: GuildBadge }) {
         </p>
         <p className="truncate text-xs text-[#6b7a6d]">{badge.reason}</p>
       </div>
-      <span
-        className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${statusClass}`}
+      <a
+        href={guildUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 rounded-full border border-[#6b8f71]/40 bg-[#1f2a21] px-2 py-0.5 text-xs text-[#a8d5ad] hover:bg-[#263229]"
       >
-        {label}
-      </span>
+        Check
+      </a>
     </div>
   );
 }

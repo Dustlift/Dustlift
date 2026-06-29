@@ -28,7 +28,7 @@ const baseAppId = "6a3f13295e3e3d1418bc2d18";
 export const metadata: Metadata = {
   title: `${APP_NAME} - ${APP_TAGLINE}`,
   description:
-    "Scan Base wallet dust and scam tokens, batch-convert to ETH, swap assets, and view Base activity rank.",
+    "Scan Base wallet dust and scam tokens, batch-convert to ETH, swap assets, and view Base wallet activity.",
   metadataBase: new URL(appUrl),
   openGraph: {
     title: APP_NAME,
