@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatEther, parseEther } from "viem";
 import { BLOCKSCOUT_BASE } from "@/lib/constants";
 
 type BlockscoutAddress = Record<string, unknown>;
@@ -7,6 +8,15 @@ type BlockscoutTransaction = {
   timestamp?: string | null;
   from?: { hash?: string | null } | null;
   to?: { hash?: string | null } | null;
+  value?: unknown;
+  fee?: unknown;
+  transaction_fee?: unknown;
+  tx_fee?: unknown;
+  gas_fee?: unknown;
+  gas_used?: unknown;
+  gas_price?: unknown;
+  gasUsed?: unknown;
+  gasPrice?: unknown;
 };
 
 type BlockscoutTransactionsResponse = {
@@ -37,6 +47,28 @@ const GUILD_BASE_API = "https://api.guild.xyz/v2/guilds/base?include=roles";
 const DEFAULT_DUNE_PAGE_SIZE = 1000;
 const DEFAULT_DUNE_MAX_PAGES = 0;
 const DEFAULT_BLOCKSCOUT_TX_PAGES = 12;
+const BASE_GUILD_BADGE_GROUPS = new Map<string, string>([
+  ["connected", "Home"],
+  ["based", "Home"],
+  ["captcha verified", "Home"],
+  ["onchain", "Onchain"],
+  ["coinbase onchain verified", "Onchain"],
+  ["based: 10 transactions", "Onchain"],
+  ["based: 50 transactions", "Onchain"],
+  ["based: 100 transactions", "Onchain"],
+  ["based: 1,000 transactions", "Onchain"],
+  ["base guild pin", "Onchain"],
+  ["base learn newcomer", "Onchain"],
+  ["base learn acolyte", "Onchain"],
+  ["base learn consul", "Onchain"],
+  ["base learn prefect", "Onchain"],
+  ["base learn supreme", "Onchain"],
+  ["based developer", "Builders & Founders"],
+  ["based caster", "Creators & Voices"],
+  ["base redditor", "Creators & Voices"],
+  ["base maxi", "Creators & Voices"],
+  ["true early believers", "It's Time to PRED"],
+]);
 
 function readNumber(obj: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
@@ -82,6 +114,79 @@ function parseTimestamp(value: string | null | undefined): number | null {
 
 function daysBetween(start: number, end: number): number {
   return Math.max(1, Math.ceil((end - start) / 86_400_000));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readWeiAmount(value: unknown): bigint | null {
+  if (value == null) return null;
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return BigInt(Math.trunc(value));
+  }
+
+  if (typeof value === "string") {
+    const clean = value.trim().replace(/,/g, "");
+    if (!clean) return null;
+    if (/^\d+$/.test(clean)) return BigInt(clean);
+    if (/^\d*\.\d+$/.test(clean)) {
+      try {
+        return parseEther(clean);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  if (isRecord(value)) {
+    for (const key of ["value", "wei", "amount", "raw"]) {
+      const parsed = readWeiAmount(value[key]);
+      if (parsed != null) return parsed;
+    }
+  }
+
+  return null;
+}
+
+function weiToEthNumber(value: bigint): number {
+  return Number(formatEther(value));
+}
+
+function readTransactionValueWei(tx: BlockscoutTransaction): bigint {
+  return readWeiAmount(tx.value) ?? 0n;
+}
+
+function readTransactionFeeWei(tx: BlockscoutTransaction): bigint {
+  for (const key of ["fee", "transaction_fee", "tx_fee", "gas_fee"] as const) {
+    const parsed = readWeiAmount(tx[key]);
+    if (parsed != null) return parsed;
+  }
+
+  const gasUsed = readWeiAmount(tx.gas_used ?? tx.gasUsed);
+  const gasPrice = readWeiAmount(tx.gas_price ?? tx.gasPrice);
+
+  if (gasUsed != null && gasPrice != null) {
+    return gasUsed * gasPrice;
+  }
+
+  return 0n;
+}
+
+function sumNativeVolumeWei(items: BlockscoutTransaction[]): bigint {
+  return items.reduce(
+    (total, tx) => total + readTransactionValueWei(tx),
+    0n,
+  );
+}
+
+function sumFeeWei(items: BlockscoutTransaction[], address: string): bigint {
+  return items.reduce((total, tx) => {
+    if (!sameAddress(tx.from?.hash, address)) return total;
+    return total + readTransactionFeeWei(tx);
+  }, 0n);
 }
 
 export async function GET(request: NextRequest) {
@@ -147,6 +252,8 @@ async function fetchLocalActivity(address: string) {
       .map((tx) => tx.to?.hash?.toLowerCase())
       .filter((hash): hash is string => Boolean(hash)),
   ).size;
+  const nativeVolumeEth = weiToEthNumber(sumNativeVolumeWei(items));
+  const gasFeeEth = weiToEthNumber(sumFeeWei(items, address));
   const activeDays = Math.max(uniqueDays.size, ageDays ? Math.min(ageDays, 1) : 0);
   const score = Math.round(
     txCount * 1.5 + activeDays * 8 + (tokenTransferCount ?? 0) * 0.25,
@@ -156,6 +263,8 @@ async function fetchLocalActivity(address: string) {
     txCount,
     tokenTransferCount,
     contractCount,
+    nativeVolumeEth,
+    gasFeeEth,
     sampledTxCount: items.length,
     activeDays,
     firstSeen: firstSeen ? new Date(firstSeen).toISOString() : null,
@@ -406,6 +515,10 @@ function isPublicGuildReward(name: string): boolean {
   );
 }
 
+function getBaseGuildBadgeGroup(name: string): string | null {
+  return BASE_GUILD_BADGE_GROUPS.get(name.toLowerCase()) ?? null;
+}
+
 async function fetchGuildBadges() {
   const res = await fetch(GUILD_BASE_API, {
     headers: { accept: "application/json" },
@@ -428,12 +541,14 @@ async function fetchGuildBadges() {
     .map((reward) => {
       const name = reward.ui?.displayName?.trim() ?? "";
       if (!name || !isPublicGuildReward(name)) return null;
+      const group = getBaseGuildBadgeGroup(name);
+      if (!group) return null;
       return {
         id: reward.id ?? reward.data?.roleId ?? name,
         name,
         type: reward.type ?? "GUILD",
         imageUrl: reward.ui?.imageUrl ?? reward.ui?.imgUrl ?? null,
-        reason: "Check eligibility on Guild",
+        reason: `${group} badge`,
       };
     })
     .filter((badge): badge is NonNullable<typeof badge> => badge != null)

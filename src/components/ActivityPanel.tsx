@@ -7,6 +7,8 @@ type LocalActivity = {
   txCount: number;
   tokenTransferCount: number | null;
   contractCount: number;
+  nativeVolumeEth: number;
+  gasFeeEth: number;
   sampledTxCount: number;
   activeDays: number;
   firstSeen: string | null;
@@ -166,7 +168,9 @@ export function ActivityPanel() {
           />
           <ActivityStat
             label="Total volume"
-            value={formatEth(data?.dune.nativeVolumeEth)}
+            value={formatEth(
+              data?.dune.nativeVolumeEth ?? data?.local.nativeVolumeEth,
+            )}
           />
           <ActivityStat
             label="Contracts"
@@ -178,7 +182,7 @@ export function ActivityPanel() {
           />
           <ActivityStat
             label="Total fees"
-            value={formatEth(data?.dune.gasFeeEth)}
+            value={formatEth(data?.dune.gasFeeEth ?? data?.local.gasFeeEth)}
           />
           <ActivityStat
             label="Active days"
@@ -189,8 +193,8 @@ export function ActivityPanel() {
 
       {data?.dune.configured && !data.dune.rowFound && (
         <p className="mt-3 text-xs text-[#8a9a8c]">
-          Dune did not return this wallet yet, so unavailable fields stay blank.
-          Total tx and contract count can still be filled from Base explorer data.
+          Dune did not return this wallet yet. Volume and fee fields use the
+          explorer sample until Dune returns the full wallet row.
         </p>
       )}
 
