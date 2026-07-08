@@ -23,6 +23,7 @@ type TokenForm = {
   supply: string;
   description: string;
   logoUrl: string;
+  logoFileName: string;
   website: string;
   x: string;
   telegram: string;
@@ -46,6 +47,7 @@ const initialForm: TokenForm = {
   supply: "1000000000",
   description: "",
   logoUrl: "",
+  logoFileName: "",
   website: "",
   x: "",
   telegram: "",
@@ -77,6 +79,59 @@ function getLogoInitial(symbol: string, name: string) {
   return (symbol || name || "B").slice(0, 1).toUpperCase();
 }
 
+async function resizeLogoFile(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg"].includes(file.type)) {
+    throw new Error("Logo icin sadece PNG veya JPG dosyasi yukleyebilirsin.");
+  }
+
+  if (file.size > 6 * 1024 * 1024) {
+    throw new Error("Logo dosyasi en fazla 6 MB olabilir.");
+  }
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Logo gorseli okunamadi."));
+      img.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Logo dosyasi okunamadi."));
+    reader.readAsDataURL(file);
+  });
+
+  const size = 800;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Logo islenemedi. Farkli bir PNG veya JPG dene.");
+  }
+
+  context.fillStyle = "#101611";
+  context.fillRect(0, 0, size, size);
+
+  const cropSize = Math.min(image.naturalWidth, image.naturalHeight);
+  const sourceX = Math.max(0, (image.naturalWidth - cropSize) / 2);
+  const sourceY = Math.max(0, (image.naturalHeight - cropSize) / 2);
+
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    cropSize,
+    cropSize,
+    0,
+    0,
+    size,
+    size,
+  );
+
+  return canvas.toDataURL("image/png");
+}
+
 export function B20LaunchWizard() {
   const { address, chainId, isConnected } = useAccount();
   const { switchChainAsync } = useSwitchChain();
@@ -102,6 +157,7 @@ export function B20LaunchWizard() {
   const [form, setForm] = useState<TokenForm>(initialForm);
   const [status, setStatus] = useState<LaunchStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
 
   const tokenName = form.name.trim();
@@ -131,6 +187,23 @@ export function B20LaunchWizard() {
   function updateForm<K extends keyof TokenForm>(key: K, value: TokenForm[K]) {
     setDraftSaved(false);
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleLogoUpload(file?: File) {
+    setLogoError(null);
+    if (!file) return;
+
+    try {
+      const logoDataUrl = await resizeLogoFile(file);
+      setDraftSaved(false);
+      setForm((current) => ({
+        ...current,
+        logoUrl: logoDataUrl,
+        logoFileName: file.name,
+      }));
+    } catch (error) {
+      setLogoError(error instanceof Error ? error.message : "Logo yuklenemedi.");
+    }
   }
 
   function goNext() {
@@ -297,9 +370,46 @@ export function B20LaunchWizard() {
       {step === 2 && (
         <StepPanel title="Logo and socials" kicker="Optional">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Logo URL">
-              <input value={form.logoUrl} onChange={(event) => updateForm("logoUrl", event.target.value)} className="input-surface" placeholder="https://..." />
-            </Field>
+            <div className="flex flex-col gap-3 rounded-xl border border-[#2a332c] bg-[#101611] p-4 sm:col-span-2">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <LogoMark logoUrl={form.logoUrl} symbol={form.symbol} name={form.name} />
+                <div className="flex flex-1 flex-col gap-2">
+                  <p className="text-sm font-semibold text-[#c5cdc6]">
+                    Logo upload
+                  </p>
+                  <p className="text-xs leading-5 text-[#8a9a8c]">
+                    PNG veya JPG yukle. DustLift gorseli otomatik 800x800 kare
+                    logoya cevirir.
+                  </p>
+                  <label className="inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-2 text-sm font-semibold text-[#c5cdc6] transition hover:bg-[#1a211c]">
+                    Choose PNG/JPG
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={(event) => handleLogoUpload(event.target.files?.[0])}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+              {form.logoFileName && (
+                <p className="text-xs text-[#79e0a2]">
+                  Logo ready: {form.logoFileName} converted to 800x800 PNG
+                </p>
+              )}
+              {logoError && <Notice tone="error">{logoError}</Notice>}
+              <Field label="Logo URL">
+                <input
+                  value={form.logoUrl.startsWith("data:") ? "Uploaded local logo (800x800)" : form.logoUrl}
+                  onChange={(event) =>
+                    updateForm("logoUrl", event.target.value === "Uploaded local logo (800x800)" ? form.logoUrl : event.target.value)
+                  }
+                  className="input-surface"
+                  placeholder="https://... or upload PNG/JPG above"
+                  readOnly={form.logoUrl.startsWith("data:")}
+                />
+              </Field>
+            </div>
             <Field label="Website">
               <input value={form.website} onChange={(event) => updateForm("website", event.target.value)} className="input-surface" placeholder="https://..." />
             </Field>
