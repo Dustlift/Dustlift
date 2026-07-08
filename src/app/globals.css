@@ -35,3 +35,17 @@ body::before {
     radial-gradient(ellipse 60% 40% at 100% 100%, #1e2820 0%, transparent 50%),
     var(--background);
 }
+
+@layer components {
+  .input-surface {
+    @apply rounded-xl border border-[#3d4a3f] bg-[#141a16] px-4 py-3 text-sm text-[#e8e4dc] outline-none placeholder:text-[#6b7a6d] focus:border-[#6b8f71];
+  }
+
+  .primary-button {
+    @apply inline-flex items-center justify-center rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white;
+  }
+
+  .secondary-button {
+    @apply inline-flex items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#141a16] px-5 py-3 text-sm font-semibold text-[#c5cdc6] transition hover:bg-[#1a211c];
+  }
+}
