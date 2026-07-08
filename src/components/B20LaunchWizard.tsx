@@ -3,7 +3,14 @@
 import { useMemo, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { formatUnits } from "viem";
-import { useAccount, useBalance, useSwitchChain } from "wagmi";
+import { useAccount, useBalance, useReadContract, useSwitchChain } from "wagmi";
+import {
+  B20_ACTIVATION_REGISTRY_ADDRESS,
+  B20_ASSET_FEATURE_ID,
+  B20_FACTORY_ADDRESS,
+  B20_POLICY_REGISTRY_ADDRESS,
+  b20ActivationRegistryAbi,
+} from "@/lib/b20";
 import { BASE_CHAIN_ID } from "@/lib/constants";
 import { truncateAddress } from "@/lib/format";
 
@@ -30,20 +37,8 @@ type UpcomingToken = {
   status: string;
 };
 
-const steps = [
-  "Start",
-  "Details",
-  "Logo & links",
-  "Preview",
-  "Wallet",
-  "Ready",
-] as const;
-
-const upcomingTokens: UpcomingToken[] = [
-  { name: "Base Morning", symbol: "MORN", creator: "0x6f21...91ac", status: "Waiting for B20" },
-  { name: "Dust Club", symbol: "DUSTC", creator: "0x2c44...7d20", status: "Draft ready" },
-  { name: "Builder Spark", symbol: "SPRK", creator: "0x91bd...038a", status: "Launch queue" },
-];
+const launchWindowText = "8 July 2026, 21:00 Turkey time";
+const steps = ["Start", "Details", "Logo & links", "Preview", "Wallet", "Ready"] as const;
 
 const initialForm: TokenForm = {
   name: "",
@@ -58,8 +53,11 @@ const initialForm: TokenForm = {
   communityListed: true,
 };
 
-const b20LaunchEnabled = process.env.NEXT_PUBLIC_B20_LAUNCH_ENABLED === "true";
-const launchWindowText = "8 July 2026, 21:00 Turkey time";
+const upcomingTokens: UpcomingToken[] = [
+  { name: "Base Morning", symbol: "MORN", creator: "0x6f21...91ac", status: "Waiting for B20" },
+  { name: "Dust Club", symbol: "DUSTC", creator: "0x2c44...7d20", status: "Draft ready" },
+  { name: "Builder Spark", symbol: "SPRK", creator: "0x91bd...038a", status: "Launch queue" },
+];
 
 function normalizeSymbol(value: string) {
   return value.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 12);
@@ -72,8 +70,7 @@ function formatSupply(value: string) {
 }
 
 function shortAddress(address?: string) {
-  if (!address) return "Not connected";
-  return truncateAddress(address);
+  return address ? truncateAddress(address) : "Not connected";
 }
 
 function getLogoInitial(symbol: string, name: string) {
@@ -87,6 +84,18 @@ export function B20LaunchWizard() {
     address,
     chainId: BASE_CHAIN_ID,
     query: { enabled: Boolean(address) },
+  });
+  const {
+    data: b20AssetActivated,
+    isError: activationCheckFailed,
+    isLoading: activationChecking,
+  } = useReadContract({
+    address: B20_ACTIVATION_REGISTRY_ADDRESS,
+    abi: b20ActivationRegistryAbi,
+    functionName: "isActivated",
+    args: [B20_ASSET_FEATURE_ID],
+    chainId: BASE_CHAIN_ID,
+    query: { refetchInterval: 30_000 },
   });
 
   const [step, setStep] = useState<LaunchStep>(0);
@@ -102,16 +111,19 @@ export function B20LaunchWizard() {
   const isBase = chainId === BASE_CHAIN_ID;
   const ethValue = balance ? Number(formatUnits(balance.value, balance.decimals)) : 0;
   const hasEthForNetwork = Boolean(balance && balance.value > 0n);
+  const b20LaunchEnabled = b20AssetActivated === true;
+  const activationStatusText = activationChecking
+    ? "Checking Activation Registry"
+    : b20LaunchEnabled
+      ? "B20 creation enabled"
+      : activationCheckFailed
+        ? "Activation check unavailable"
+        : "Waiting for Base activation";
 
   const visibleTokens = useMemo(() => {
     if (!draftSaved || !tokenName || !tokenSymbol) return upcomingTokens;
     return [
-      {
-        name: tokenName,
-        symbol: tokenSymbol,
-        creator: shortAddress(address),
-        status: "Your draft",
-      },
+      { name: tokenName, symbol: tokenSymbol, creator: shortAddress(address), status: "Your draft" },
       ...upcomingTokens,
     ];
   }, [address, draftSaved, tokenName, tokenSymbol]);
@@ -139,7 +151,7 @@ export function B20LaunchWizard() {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Base ağına geçiş tamamlanamadı. Cüzdanını kontrol et.",
+          : "Base agina gecis tamamlanamadi. Cuzdanini kontrol et.",
       );
     }
   }
@@ -150,14 +162,14 @@ export function B20LaunchWizard() {
 
     if (!canContinueDetails) {
       setStatus("error");
-      setMessage("Token adı, sembol ve toplam arz alanlarını doldur.");
+      setMessage("Token adi, sembol ve toplam arz alanlarini doldur.");
       setStep(1);
       return;
     }
 
     if (!isConnected) {
       setStatus("error");
-      setMessage("Güncelleme sonrası token oluşturmak için önce cüzdanını bağlaman gerekecek.");
+      setMessage("Gercek B20 token olusturmak icin once cuzdanini baglaman gerekecek.");
       setStep(4);
       return;
     }
@@ -170,47 +182,48 @@ export function B20LaunchWizard() {
 
     setDraftSaved(true);
 
+    if (activationChecking) {
+      setStatus("waiting");
+      setMessage("Activation Registry kontrol ediliyor. B20 aktif oldugunda bu buton gercek olusturma akisina gececek.");
+      return;
+    }
+
     if (!b20LaunchEnabled) {
       setStatus("waiting");
       setMessage(
-        `B20 oluşturma butonu ${launchWindowText} sonrası aktif edilecek. Bilgilerin hazır; güncellemeden sonra aynı formdan Create B20 Token butonunu kullanacaksın.`,
+        activationCheckFailed
+          ? "Activation Registry su an okunamadi. Bilgilerin hazir; biraz sonra tekrar dene."
+          : "Activation Registry henuz base.b20_asset icin aktif donmuyor. Bilgilerin hazir; aktif oldugunda ayni formdan Create B20 Token butonunu kullanacaksin.",
       );
       return;
     }
 
     if (!hasEthForNetwork) {
       setStatus("error");
-      setMessage(
-        "Cüzdanında Base işlemini onaylamak için yeterli ETH görünmüyor. Biraz ETH ekledikten sonra tekrar dene.",
-      );
+      setMessage("Cuzdaninda Base islemini onaylamak icin yeterli ETH gorunmuyor. Biraz ETH ekledikten sonra tekrar dene.");
       return;
     }
 
     setStatus("ready");
-    setMessage(
-      "B20 launch aktif. Gerçek factory bağlantısı eklendiğinde bu buton cüzdan onayıyla tokenı zincirde oluşturacak.",
-    );
+    setMessage("B20 Asset aktivasyonu acik gorunuyor. Bir sonraki adim factory createB20 cagrisini bu butona baglamak.");
   }
 
   return (
     <section id="launch" className="flex flex-col gap-5 rounded-2xl border border-[#3d4a3f]/60 bg-[#141a16]/90 p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">
-            B20 Launch Wizard
-          </p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">B20 Launch Wizard</p>
           <h2 className="font-serif text-3xl italic text-[#e8e4dc]">
             Prepare your B20 token before launch opens.
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#a8b0a4]">
-            Enter the same details you will use after the update. DustLift will not
-            create a demo token now; the real Create B20 Token action opens after
-            the B20 update is connected.
+            Enter the same details you will use after activation. DustLift will not create a demo token now; the real Create B20 Token action opens when Base Activation Registry returns active.
           </p>
         </div>
         <div className="rounded-xl border border-[#6b8f71]/50 bg-[#122017] px-4 py-3 text-sm text-[#c5cdc6]">
-          <p className="text-xs uppercase tracking-wide text-[#79e0a2]">Launch window</p>
-          <p className="mt-1">{b20LaunchEnabled ? "B20 creation enabled" : launchWindowText}</p>
+          <p className="text-xs uppercase tracking-wide text-[#79e0a2]">Activation status</p>
+          <p className="mt-1">{activationStatusText}</p>
+          <p className="mt-1 text-xs text-[#8a9a8c]">Target: {launchWindowText}</p>
         </div>
       </div>
 
@@ -233,25 +246,23 @@ export function B20LaunchWizard() {
         ))}
       </div>
 
+      <div className="grid gap-3 text-xs text-[#8a9a8c] sm:grid-cols-3">
+        <RegistryCard label="Factory" value={B20_FACTORY_ADDRESS} />
+        <RegistryCard label="Activation Registry" value={B20_ACTIVATION_REGISTRY_ADDRESS} />
+        <RegistryCard label="Policy Registry" value={B20_POLICY_REGISTRY_ADDRESS} />
+      </div>
+
       {step === 0 && (
         <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
           <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
             <p className="text-sm font-semibold text-[#6b8f71]">
-              B20 tokenını dakikalar içinde oluştur, DustLift’te listele ve topluluğunu başlat.
+              B20 tokenini dakikalar icinde olustur, DustLift&apos;te listele ve toplulugunu baslat.
             </p>
-            <h3 className="mt-4 font-serif text-4xl italic text-[#e8e4dc]">
-              Get launch-ready now.
-            </h3>
+            <h3 className="mt-4 font-serif text-4xl italic text-[#e8e4dc]">Get launch-ready now.</h3>
             <p className="mt-3 text-sm leading-6 text-[#a8b0a4]">
-              Fill in your token name, symbol, supply, logo, and social links now.
-              After the update, return here and press Create B20 Token to launch
-              with your wallet.
+              Fill in your token name, symbol, supply, logo, and social links now. After activation, return here and press Create B20 Token to launch with your wallet.
             </p>
-            <button
-              type="button"
-              onClick={goNext}
-              className="mt-6 rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white"
-            >
+            <button type="button" onClick={goNext} className="mt-6 rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white">
               Prepare token details
             </button>
           </div>
@@ -260,32 +271,16 @@ export function B20LaunchWizard() {
       )}
 
       {step === 1 && (
-        <StepPanel title="Token details" kicker="Use these after the update">
+        <StepPanel title="Token details" kicker="Use these after activation">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Token name">
-              <input
-                value={form.name}
-                onChange={(event) => updateForm("name", event.target.value.slice(0, 64))}
-                className="input-surface"
-                placeholder="Dust Friends"
-              />
+              <input value={form.name} onChange={(event) => updateForm("name", event.target.value.slice(0, 64))} className="input-surface" placeholder="Dust Friends" />
             </Field>
             <Field label="Symbol">
-              <input
-                value={tokenSymbol}
-                onChange={(event) => updateForm("symbol", normalizeSymbol(event.target.value))}
-                className="input-surface"
-                placeholder="DUST"
-              />
+              <input value={tokenSymbol} onChange={(event) => updateForm("symbol", normalizeSymbol(event.target.value))} className="input-surface" placeholder="DUST" />
             </Field>
             <Field label="Total supply">
-              <input
-                value={form.supply}
-                onChange={(event) => updateForm("supply", event.target.value.replace(/[^0-9]/g, "").slice(0, 18))}
-                className="input-surface"
-                inputMode="numeric"
-                placeholder="1000000000"
-              />
+              <input value={form.supply} onChange={(event) => updateForm("supply", event.target.value.replace(/[^0-9]/g, "").slice(0, 18))} className="input-surface" inputMode="numeric" placeholder="1000000000" />
             </Field>
             <div className="rounded-xl border border-[#2a332c] bg-[#101611] px-4 py-3 text-sm text-[#8a9a8c]">
               <p className="text-xs uppercase tracking-wide text-[#6b7a6d]">Decimals</p>
@@ -293,12 +288,7 @@ export function B20LaunchWizard() {
             </div>
           </div>
           <Field label="Description">
-            <textarea
-              value={form.description}
-              onChange={(event) => updateForm("description", event.target.value.slice(0, 220))}
-              className="input-surface min-h-28 resize-none"
-              placeholder="What is this token for?"
-            />
+            <textarea value={form.description} onChange={(event) => updateForm("description", event.target.value.slice(0, 220))} className="input-surface min-h-28 resize-none" placeholder="What is this token for?" />
           </Field>
           <WizardActions onBack={goBack} onNext={goNext} nextDisabled={!canContinueDetails} />
         </StepPanel>
@@ -333,7 +323,7 @@ export function B20LaunchWizard() {
           <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
             <TokenPreview form={form} />
             <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5 text-sm leading-6 text-[#a8b0a4]">
-              <p className="font-semibold text-[#e8e4dc]">After the update</p>
+              <p className="font-semibold text-[#e8e4dc]">After activation</p>
               <p className="mt-2">You will come back to this screen, connect your Base wallet, and press Create B20 Token.</p>
               <p className="mt-2">Only then will DustLift send the real B20 creation transaction and show the real token address.</p>
             </div>
@@ -347,7 +337,7 @@ export function B20LaunchWizard() {
           <div className="grid gap-3 sm:grid-cols-3">
             <CheckCard label="Wallet" value={isConnected ? shortAddress(address) : "Not connected"} ok={isConnected} />
             <CheckCard label="Base network" value={isBase ? "Ready" : "Switch needed"} ok={isBase} />
-            <CheckCard label="ETH for network" value={hasEthForNetwork ? `${ethValue.toFixed(5)} ETH` : "Needed after launch opens"} ok={hasEthForNetwork || !b20LaunchEnabled} />
+            <CheckCard label="ETH for network" value={hasEthForNetwork ? `${ethValue.toFixed(5)} ETH` : "Needed after activation"} ok={hasEthForNetwork || !b20LaunchEnabled} />
           </div>
           <div className="flex flex-wrap gap-3">
             {!isConnected && (
@@ -373,26 +363,21 @@ export function B20LaunchWizard() {
       )}
 
       {step === 5 && (
-        <StepPanel title="Create B20 Token" kicker={b20LaunchEnabled ? "Launch enabled" : "Activates after update"}>
+        <StepPanel title="Create B20 Token" kicker={b20LaunchEnabled ? "Registry active" : "Waiting for registry"}>
           <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
             <p className="text-sm text-[#c5cdc6]">
               {b20LaunchEnabled
-                ? "B20 creation is enabled for the live contract integration. Your wallet will show the Base network confirmation."
-                : "This button is shown now so users know exactly what to do after the evening update. It does not create a demo token before B20 is active."}
+                ? "Activation Registry says B20 Asset creation is open. Your wallet will show the Base network confirmation once the factory create call is connected."
+                : "This button is shown now so users know exactly what to do after activation. It does not create a demo token before B20 is active."}
             </p>
             <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
               <StatusLine active label="1/3 Details prepared" />
               <StatusLine active={isConnected} label="2/3 Wallet ready" />
-              <StatusLine active={b20LaunchEnabled} label="3/3 B20 creation opens" />
+              <StatusLine active={b20LaunchEnabled} label="3/3 Registry active" />
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={prepareForLaunch}
-              disabled={status === "checking"}
-              className={`${b20LaunchEnabled ? "primary-button" : "secondary-button"} disabled:opacity-50`}
-            >
+            <button type="button" onClick={prepareForLaunch} disabled={status === "checking"} className={`${b20LaunchEnabled ? "primary-button" : "secondary-button"} disabled:opacity-50`}>
               {status === "checking" ? "Checking..." : "Create B20 Token"}
             </button>
             <button type="button" onClick={goBack} className="secondary-button">
@@ -401,7 +386,7 @@ export function B20LaunchWizard() {
           </div>
           {!b20LaunchEnabled && (
             <Notice tone="info">
-              B20 creation is scheduled to open after {launchWindowText}. Until then, this screen only prepares the launch details.
+              Activation Registry is not active for base.b20_asset yet. Until then, this screen only prepares the launch details.
             </Notice>
           )}
           {message && <Notice tone={status === "error" ? "error" : "info"}>{message}</Notice>}
@@ -410,6 +395,15 @@ export function B20LaunchWizard() {
 
       <UpcomingTokenList tokens={visibleTokens} />
     </section>
+  );
+}
+
+function RegistryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-[#2a332c] bg-[#101611] px-4 py-3">
+      <p className="uppercase tracking-wide text-[#6b7a6d]">{label}</p>
+      <p className="mt-1 truncate font-mono text-[11px] text-[#c5cdc6]">{value}</p>
+    </div>
   );
 }
 
@@ -526,7 +520,10 @@ function LogoMark({ logoUrl, symbol, name, small = false }: { logoUrl: string; s
   const initial = getLogoInitial(normalizeSymbol(symbol), name);
 
   if (logoUrl.trim()) {
-    return <img src={logoUrl.trim()} alt="" className={`${size} rounded-xl border border-[#3d4a3f] object-cover`} />;
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={logoUrl.trim()} alt="" className={`${size} rounded-xl border border-[#3d4a3f] object-cover`} />
+    );
   }
 
   return <div className={`${size} flex shrink-0 items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#203124] font-serif text-2xl italic text-[#e8e4dc]`}>{initial}</div>;
@@ -540,3 +537,4 @@ function StatusPill({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
