@@ -5,18 +5,18 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   encodeAbiParameters,
   encodeFunctionData,
-  erc20Abi,
   formatUnits,
   keccak256,
+  parseEther,
   parseUnits,
   stringToHex,
-  zeroAddress,
 } from "viem";
 import {
   useAccount,
   useBalance,
   usePublicClient,
   useReadContract,
+  useSendTransaction,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -30,7 +30,7 @@ import {
   b20ActivationRegistryAbi,
   b20FactoryAbi,
 } from "@/lib/b20";
-import { BASE_CHAIN_ID, USDC_BASE } from "@/lib/constants";
+import { BASE_CHAIN_ID } from "@/lib/constants";
 import { truncateAddress } from "@/lib/format";
 
 type LaunchStep = 0 | 1 | 2 | 3 | 4 | 5;
@@ -63,7 +63,7 @@ type UpcomingToken = {
 };
 
 const launchWindowText = "8 July 2026, 21:00 Turkey time";
-const b20LaunchFeeUsdc = 500_000n;
+const b20LaunchFeeEth = parseEther("0.0003");
 const steps = ["Start", "Details", "Logo & links", "Preview", "Wallet", "Ready"] as const;
 
 const initialForm: TokenForm = {
@@ -163,16 +163,9 @@ export function B20LaunchWizard() {
   const publicClient = usePublicClient({ chainId: BASE_CHAIN_ID });
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { sendTransactionAsync } = useSendTransaction();
   const { data: balance } = useBalance({
     address,
-    chainId: BASE_CHAIN_ID,
-    query: { enabled: Boolean(address) },
-  });
-  const { data: usdcBalance } = useReadContract({
-    address: USDC_BASE,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [address ?? zeroAddress],
     chainId: BASE_CHAIN_ID,
     query: { enabled: Boolean(address) },
   });
@@ -217,7 +210,7 @@ export function B20LaunchWizard() {
   const isBase = chainId === BASE_CHAIN_ID;
   const ethValue = balance ? Number(formatUnits(balance.value, balance.decimals)) : 0;
   const hasEthForNetwork = Boolean(balance && balance.value > 0n);
-  const hasLaunchFeeUsdc = typeof usdcBalance === "bigint" && usdcBalance >= b20LaunchFeeUsdc;
+  const hasLaunchFeeEth = Boolean(balance && balance.value >= b20LaunchFeeEth);
   const b20LaunchEnabled = b20AssetActivated === true;
   const activationStatusText = activationChecking
     ? "Checking Activation Registry"
@@ -334,9 +327,9 @@ export function B20LaunchWizard() {
       return;
     }
 
-    if (!hasLaunchFeeUsdc) {
+    if (!hasLaunchFeeEth) {
       setStatus("error");
-      setMessage("Token olusturmak icin cuzdaninda 0.5 USDC DustLift fee bulunmali.");
+      setMessage("Token olusturmak icin cuzdaninda 0.0003 ETH DustLift fee ve ag ucreti icin biraz ETH bulunmali.");
       return;
     }
 
@@ -347,14 +340,12 @@ export function B20LaunchWizard() {
     }
 
     setStatus("waiting");
-    setMessage("Cuzdaninda once 0.5 USDC DustLift fee onayi aciliyor...");
+    setMessage("Cuzdaninda once 0.0003 ETH DustLift fee onayi aciliyor...");
 
     try {
-      const feeHash = await writeContractAsync({
-        address: USDC_BASE,
-        abi: erc20Abi,
-        functionName: "transfer",
-        args: [b20FeeRecipient, b20LaunchFeeUsdc],
+      const feeHash = await sendTransactionAsync({
+        to: b20FeeRecipient,
+        value: b20LaunchFeeEth,
         chainId: BASE_CHAIN_ID,
       });
 
@@ -659,7 +650,7 @@ export function B20LaunchWizard() {
             <CheckCard label="Wallet" value={isConnected ? shortAddress(address) : "Not connected"} ok={isConnected} />
             <CheckCard label="Base network" value={isBase ? "Ready" : "Switch needed"} ok={isBase} />
             <CheckCard label="ETH for network" value={hasEthForNetwork ? `${ethValue.toFixed(5)} ETH` : "Needed after activation"} ok={hasEthForNetwork || !b20LaunchEnabled} />
-            <CheckCard label="DustLift fee" value={hasLaunchFeeUsdc ? "0.5 USDC ready" : "0.5 USDC"} ok={hasLaunchFeeUsdc || !b20LaunchEnabled} />
+            <CheckCard label="DustLift fee" value={hasLaunchFeeEth ? "0.0003 ETH ready" : "0.0003 ETH"} ok={hasLaunchFeeEth || !b20LaunchEnabled} />
           </div>
           <div className="flex flex-wrap gap-3">
             {!isConnected && (
@@ -689,7 +680,7 @@ export function B20LaunchWizard() {
           <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
             <p className="text-sm text-[#c5cdc6]">
               {b20LaunchEnabled
-                ? "Activation Registry says B20 Asset creation is open. Your wallet will show two confirmations: 0.5 USDC DustLift fee, then createB20."
+                ? "Activation Registry says B20 Asset creation is open. Your wallet will show two confirmations: 0.0003 ETH DustLift fee, then createB20."
                 : "This button is shown now so users know exactly what to do after activation. It does not create a demo token before B20 is active."}
             </p>
             <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
