@@ -2,20 +2,43 @@
 
 import { useMemo, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { formatUnits } from "viem";
-import { useAccount, useBalance, useReadContract, useSwitchChain } from "wagmi";
+import {
+  encodeAbiParameters,
+  encodeFunctionData,
+  erc20Abi,
+  formatUnits,
+  keccak256,
+  parseUnits,
+  stringToHex,
+  zeroAddress,
+} from "viem";
+import {
+  useAccount,
+  useBalance,
+  usePublicClient,
+  useReadContract,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 import {
   B20_ACTIVATION_REGISTRY_ADDRESS,
   B20_ASSET_FEATURE_ID,
   B20_FACTORY_ADDRESS,
   B20_POLICY_REGISTRY_ADDRESS,
+  MINT_ROLE,
+  b20AssetAbi,
   b20ActivationRegistryAbi,
+  b20FactoryAbi,
 } from "@/lib/b20";
-import { BASE_CHAIN_ID } from "@/lib/constants";
+import { BASE_CHAIN_ID, USDC_BASE } from "@/lib/constants";
 import { truncateAddress } from "@/lib/format";
 
 type LaunchStep = 0 | 1 | 2 | 3 | 4 | 5;
 type LaunchStatus = "idle" | "checking" | "waiting" | "ready" | "error";
+type CreatedToken = {
+  address: `0x${string}`;
+  hash: `0x${string}`;
+};
 
 type TokenForm = {
   name: string;
@@ -27,6 +50,7 @@ type TokenForm = {
   website: string;
   x: string;
   telegram: string;
+  pairToken: "ETH" | "USDC";
   visibleInPool: boolean;
   communityListed: boolean;
 };
@@ -39,6 +63,7 @@ type UpcomingToken = {
 };
 
 const launchWindowText = "8 July 2026, 21:00 Turkey time";
+const b20LaunchFeeUsdc = 500_000n;
 const steps = ["Start", "Details", "Logo & links", "Preview", "Wallet", "Ready"] as const;
 
 const initialForm: TokenForm = {
@@ -51,6 +76,7 @@ const initialForm: TokenForm = {
   website: "",
   x: "",
   telegram: "",
+  pairToken: "ETH",
   visibleInPool: true,
   communityListed: true,
 };
@@ -134,9 +160,19 @@ async function resizeLogoFile(file: File): Promise<string> {
 
 export function B20LaunchWizard() {
   const { address, chainId, isConnected } = useAccount();
+  const publicClient = usePublicClient({ chainId: BASE_CHAIN_ID });
   const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
   const { data: balance } = useBalance({
     address,
+    chainId: BASE_CHAIN_ID,
+    query: { enabled: Boolean(address) },
+  });
+  const { data: usdcBalance } = useReadContract({
+    address: USDC_BASE,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [address ?? zeroAddress],
     chainId: BASE_CHAIN_ID,
     query: { enabled: Boolean(address) },
   });
@@ -158,7 +194,21 @@ export function B20LaunchWizard() {
   const [status, setStatus] = useState<LaunchStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [createdToken, setCreatedToken] = useState<CreatedToken | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [showLaunchOptions, setShowLaunchOptions] = useState(false);
+
+  const b20FeeRecipient = useMemo(() => {
+    const recipient = (
+      process.env.NEXT_PUBLIC_B20_LAUNCH_FEE_RECIPIENT ??
+      process.env.NEXT_PUBLIC_FEE_RECIPIENT ??
+      ""
+    ).toLowerCase();
+
+    return /^0x[a-f0-9]{40}$/.test(recipient)
+      ? (recipient as `0x${string}`)
+      : null;
+  }, []);
 
   const tokenName = form.name.trim();
   const tokenSymbol = normalizeSymbol(form.symbol);
@@ -167,6 +217,7 @@ export function B20LaunchWizard() {
   const isBase = chainId === BASE_CHAIN_ID;
   const ethValue = balance ? Number(formatUnits(balance.value, balance.decimals)) : 0;
   const hasEthForNetwork = Boolean(balance && balance.value > 0n);
+  const hasLaunchFeeUsdc = typeof usdcBalance === "bigint" && usdcBalance >= b20LaunchFeeUsdc;
   const b20LaunchEnabled = b20AssetActivated === true;
   const activationStatusText = activationChecking
     ? "Checking Activation Registry"
@@ -277,8 +328,112 @@ export function B20LaunchWizard() {
       return;
     }
 
-    setStatus("ready");
-    setMessage("B20 Asset aktivasyonu acik gorunuyor. Bir sonraki adim factory createB20 cagrisini bu butona baglamak.");
+    if (!b20FeeRecipient) {
+      setStatus("error");
+      setMessage("DustLift fee cuzdani ayarlanmamis. NEXT_PUBLIC_B20_LAUNCH_FEE_RECIPIENT veya NEXT_PUBLIC_FEE_RECIPIENT eklenmeli.");
+      return;
+    }
+
+    if (!hasLaunchFeeUsdc) {
+      setStatus("error");
+      setMessage("Token olusturmak icin cuzdaninda 0.5 USDC DustLift fee bulunmali.");
+      return;
+    }
+
+    if (!address || !publicClient) {
+      setStatus("error");
+      setMessage("Cuzdan baglantisi okunamadi. Sayfayi yenileyip tekrar dene.");
+      return;
+    }
+
+    setStatus("waiting");
+    setMessage("Cuzdaninda once 0.5 USDC DustLift fee onayi aciliyor...");
+
+    try {
+      const feeHash = await writeContractAsync({
+        address: USDC_BASE,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [b20FeeRecipient, b20LaunchFeeUsdc],
+        chainId: BASE_CHAIN_ID,
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash: feeHash });
+      setMessage("Fee alindi. Simdi B20 token olusturma onayi aciliyor...");
+
+      const decimals = 18;
+      const supply = parseUnits(form.supply || "0", decimals);
+      const salt = keccak256(
+        stringToHex(`${address}:${tokenName}:${tokenSymbol}:${Date.now()}`),
+      );
+      const params = encodeAbiParameters(
+        [
+          {
+            type: "tuple",
+            components: [
+              { name: "version", type: "uint8" },
+              { name: "name", type: "string" },
+              { name: "symbol", type: "string" },
+              { name: "initialAdmin", type: "address" },
+              { name: "decimals", type: "uint8" },
+            ],
+          },
+        ],
+        [
+          {
+            version: 1,
+            name: tokenName,
+            symbol: tokenSymbol,
+            initialAdmin: address,
+            decimals,
+          },
+        ],
+      );
+      const initCalls = [
+        encodeFunctionData({
+          abi: b20AssetAbi,
+          functionName: "grantRole",
+          args: [MINT_ROLE, address],
+        }),
+        encodeFunctionData({
+          abi: b20AssetAbi,
+          functionName: "updateSupplyCap",
+          args: [supply],
+        }),
+        encodeFunctionData({
+          abi: b20AssetAbi,
+          functionName: "batchMint",
+          args: [[address], [supply]],
+        }),
+      ];
+
+      const predictedAddress = await publicClient.readContract({
+        address: B20_FACTORY_ADDRESS,
+        abi: b20FactoryAbi,
+        functionName: "getB20Address",
+        args: [0, address, salt],
+      });
+      const hash = await writeContractAsync({
+        address: B20_FACTORY_ADDRESS,
+        abi: b20FactoryAbi,
+        functionName: "createB20",
+        args: [0, salt, params, initCalls],
+        chainId: BASE_CHAIN_ID,
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash });
+      setCreatedToken({ address: predictedAddress, hash });
+      setDraftSaved(true);
+      setStatus("ready");
+      setMessage("B20 token olusturuldu. Token adresi ve BaseScan linki hazir.");
+    } catch (error) {
+      setStatus("error");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "B20 token olusturma islemi tamamlanamadi.",
+      );
+    }
   }
 
   return (
@@ -368,7 +523,7 @@ export function B20LaunchWizard() {
       )}
 
       {step === 2 && (
-        <StepPanel title="Logo and socials" kicker="Optional">
+        <StepPanel title="Logo and links" kicker="Optional">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-3 rounded-xl border border-[#2a332c] bg-[#101611] p-4 sm:col-span-2">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -410,19 +565,75 @@ export function B20LaunchWizard() {
                 />
               </Field>
             </div>
-            <Field label="Website">
-              <input value={form.website} onChange={(event) => updateForm("website", event.target.value)} className="input-surface" placeholder="https://..." />
-            </Field>
-            <Field label="X">
-              <input value={form.x} onChange={(event) => updateForm("x", event.target.value)} className="input-surface" placeholder="https://x.com/..." />
-            </Field>
-            <Field label="Telegram">
-              <input value={form.telegram} onChange={(event) => updateForm("telegram", event.target.value)} className="input-surface" placeholder="https://t.me/..." />
-            </Field>
+            <div className="sm:col-span-2">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#c5cdc6]">Links (optional)</p>
+                  <p className="mt-1 text-xs text-[#8a9a8c]">
+                    Website, X ve Telegram alanlari bos birakilabilir.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Website">
+                  <input value={form.website} onChange={(event) => updateForm("website", event.target.value)} className="input-surface" placeholder="https://yourproject.xyz" />
+                </Field>
+                <Field label="X">
+                  <input value={form.x} onChange={(event) => updateForm("x", event.target.value)} className="input-surface" placeholder="https://x.com/yourproject" />
+                </Field>
+                <Field label="Telegram">
+                  <input value={form.telegram} onChange={(event) => updateForm("telegram", event.target.value)} className="input-surface" placeholder="https://t.me/yourproject" />
+                </Field>
+              </div>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ToggleRow checked={form.visibleInPool} label="Show in DustLift pool after launch" onChange={(value) => updateForm("visibleInPool", value)} />
-            <ToggleRow checked={form.communityListed} label="List as community token" onChange={(value) => updateForm("communityListed", value)} />
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setShowLaunchOptions((current) => !current)}
+              className="secondary-button w-fit"
+            >
+              {showLaunchOptions ? "Hide launch options" : "Launch options"}
+            </button>
+            {showLaunchOptions && (
+              <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-[#c5cdc6]">Launch options</p>
+                  <p className="mt-1 text-xs text-[#8a9a8c]">
+                    These choices control how the token appears inside DustLift after the real B20 launch.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[#2a332c] bg-[#141a16] p-4 sm:col-span-2">
+                    <p className="text-sm font-semibold text-[#c5cdc6]">Trade pair</p>
+                    <p className="mt-1 text-xs leading-5 text-[#8a9a8c]">
+                      Pick how DustLift should prepare the token page and pool display after launch. This does not create a fake pool before B20 is active.
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl border border-[#2a332c]">
+                      {(["ETH", "USDC"] as const).map((pair) => (
+                        <button
+                          key={pair}
+                          type="button"
+                          onClick={() => updateForm("pairToken", pair)}
+                          className={`px-4 py-3 text-sm font-semibold transition ${
+                            form.pairToken === pair
+                              ? "bg-[#6b8f71] text-[#0f1410]"
+                              : "bg-[#101611] text-[#c5cdc6] hover:bg-[#182019]"
+                          }`}
+                        >
+                          {pair}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <ToggleRow checked={form.visibleInPool} label="Show in DustLift pool after launch" onChange={(value) => updateForm("visibleInPool", value)} />
+                  <ToggleRow checked={form.communityListed} label="List as community token" onChange={(value) => updateForm("communityListed", value)} />
+                </div>
+                <Notice tone="info">
+                  Pool creation, locked liquidity and price discovery will be connected only when the related DustLift pool contract flow is live.
+                </Notice>
+              </div>
+            )}
           </div>
           <WizardActions onBack={goBack} onNext={goNext} />
         </StepPanel>
@@ -444,10 +655,11 @@ export function B20LaunchWizard() {
 
       {step === 4 && (
         <StepPanel title="Wallet check" kicker="For the real launch action">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <CheckCard label="Wallet" value={isConnected ? shortAddress(address) : "Not connected"} ok={isConnected} />
             <CheckCard label="Base network" value={isBase ? "Ready" : "Switch needed"} ok={isBase} />
             <CheckCard label="ETH for network" value={hasEthForNetwork ? `${ethValue.toFixed(5)} ETH` : "Needed after activation"} ok={hasEthForNetwork || !b20LaunchEnabled} />
+            <CheckCard label="DustLift fee" value={hasLaunchFeeUsdc ? "0.5 USDC ready" : "0.5 USDC"} ok={hasLaunchFeeUsdc || !b20LaunchEnabled} />
           </div>
           <div className="flex flex-wrap gap-3">
             {!isConnected && (
@@ -477,7 +689,7 @@ export function B20LaunchWizard() {
           <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
             <p className="text-sm text-[#c5cdc6]">
               {b20LaunchEnabled
-                ? "Activation Registry says B20 Asset creation is open. Your wallet will show the Base network confirmation once the factory create call is connected."
+                ? "Activation Registry says B20 Asset creation is open. Your wallet will show two confirmations: 0.5 USDC DustLift fee, then createB20."
                 : "This button is shown now so users know exactly what to do after activation. It does not create a demo token before B20 is active."}
             </p>
             <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
@@ -487,8 +699,8 @@ export function B20LaunchWizard() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={prepareForLaunch} disabled={status === "checking"} className={`${b20LaunchEnabled ? "primary-button" : "secondary-button"} disabled:opacity-50`}>
-              {status === "checking" ? "Checking..." : "Create B20 Token"}
+            <button type="button" onClick={prepareForLaunch} disabled={status === "checking" || status === "waiting"} className={`${b20LaunchEnabled ? "primary-button" : "secondary-button"} disabled:opacity-50`}>
+              {status === "checking" ? "Checking..." : status === "waiting" ? "Processing..." : "Create B20 Token"}
             </button>
             <button type="button" onClick={goBack} className="secondary-button">
               Back
@@ -500,6 +712,28 @@ export function B20LaunchWizard() {
             </Notice>
           )}
           {message && <Notice tone={status === "error" ? "error" : "info"}>{message}</Notice>}
+          {createdToken && (
+            <div className="rounded-2xl border border-[#6b8f71]/50 bg-[#122017] p-4 text-sm text-[#c5cdc6]">
+              <p className="font-semibold text-[#79e0a2]">B20 token live</p>
+              <p className="mt-2 break-all">Token: {createdToken.address}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <a
+                  href={`https://basescan.org/token/${createdToken.address}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="primary-button"
+                >
+                  Open BaseScan
+                </a>
+                <a
+                  href={`/token/${createdToken.address}`}
+                  className="secondary-button"
+                >
+                  DustLift token page
+                </a>
+              </div>
+            </div>
+          )}
         </StepPanel>
       )}
 
@@ -564,6 +798,7 @@ function TokenPreview({ form }: { form: TokenForm }) {
       <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
         <StatusPill label="Total supply" value={formatSupply(form.supply) || "-"} />
         <StatusPill label="Decimals" value="18" />
+        <StatusPill label="Trade pair" value={form.pairToken} />
         <StatusPill label="Pool after launch" value={form.visibleInPool ? "Visible" : "Hidden"} />
         <StatusPill label="Listing" value={form.communityListed ? "Community" : "Private"} />
       </div>

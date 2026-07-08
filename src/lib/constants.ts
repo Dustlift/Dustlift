@@ -16,6 +16,9 @@ export const ETH_ADDRESS =
 export const WETH_BASE =
   "0x4200000000000000000000000000000000000006" as const;
 
+export const USDC_BASE =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+
 export const BLOCKSCOUT_BASE = "https://base.blockscout.com/api/v2";
 
 export const ZEROX_BASE_URL = "https://api.0x.org";
