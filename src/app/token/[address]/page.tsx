@@ -17,21 +17,22 @@ export default async function TokenPage({ params }: TokenPageProps) {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">
-              DustLift B20 token
+              DustLift B20 launch page
             </p>
             <h1 className="mt-2 font-serif text-4xl italic text-[#e8e4dc]">
-              ${symbol}
+              B20 page prepared
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-[#a8b0a4]">
-              This token page is ready for DustLift launches. When the B20 factory
-              is connected, live metadata, creator info, and pool data can load here.
+              This route is ready for real B20 tokens after the update. It does
+              not claim that a token exists before the live B20 factory returns a
+              real token address.
             </p>
           </div>
           <Link
-            href="/"
+            href="/#launch"
             className="inline-flex items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#141a16] px-5 py-3 text-sm font-semibold text-[#c5cdc6] transition hover:bg-[#1a211c]"
           >
-            Back to DustLift
+            Back to B20 Launch
           </Link>
         </header>
 
@@ -43,7 +44,7 @@ export default async function TokenPage({ params }: TokenPageProps) {
               </div>
               <div className="min-w-0">
                 <p className="text-xl font-semibold text-[#e8e4dc]">
-                  B20 Token
+                  Awaiting live B20 address
                 </p>
                 <p className="text-sm text-[#6b8f71]">{truncateAddress(address)}</p>
               </div>
@@ -51,38 +52,30 @@ export default async function TokenPage({ params }: TokenPageProps) {
 
             <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
               <Info label="Network" value="Base" />
-              <Info label="Status" value="DustLift page ready" />
-              <Info label="Pool" value="Pending live data" />
+              <Info label="Status" value="Prepared for update" />
+              <Info label="Pool" value="Opens after real launch" />
               <Info label="Standard" value="B20" />
             </div>
           </div>
 
           <div id="trade" className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
             <p className="text-xs uppercase tracking-[0.2em] text-[#6b7a6d]">
-              Trade / pool
+              After the update
             </p>
             <h2 className="mt-1 font-serif text-2xl italic text-[#e8e4dc]">
-              Pool view is prepared
+              Real token data will appear here
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#a8b0a4]">
-              DustLift can show the token here as soon as the live launch contract
-              and pool data source are connected. Until then, this page avoids
-              showing fake trading numbers.
+              Once B20 creation is connected, DustLift will use the real contract
+              address, BaseScan link, pool status, and trade view. Until then,
+              the launch flow stays in preparation mode.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <a
-                href={`https://basescan.org/token/${address}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white"
-              >
-                Open BaseScan
-              </a>
               <Link
                 href="/#launch"
-                className="inline-flex items-center justify-center rounded-xl border border-[#3d4a3f] bg-[#141a16] px-5 py-3 text-sm font-semibold text-[#c5cdc6] transition hover:bg-[#1a211c]"
+                className="inline-flex items-center justify-center rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white"
               >
-                Launch another token
+                Prepare B20 token
               </Link>
             </div>
           </div>
