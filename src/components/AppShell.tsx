@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { DustScanner } from "@/components/DustScanner";
-import { ActivityPanel } from "@/components/ActivityPanel";
 import { BuilderActivatePanel } from "@/components/BuilderActivatePanel";
 import { B20LaunchWizard } from "@/components/B20LaunchWizard";
 import { SwapPanel } from "@/components/SwapPanel";
@@ -71,7 +70,6 @@ export function AppShell() {
       {tab === "swap" && <SwapPanel />}
       {tab === "launch" && <B20LaunchWizard />}
       {tab === "builder" && <BuilderActivatePanel />}
-      <ActivityPanel />
     </div>
   );
 }

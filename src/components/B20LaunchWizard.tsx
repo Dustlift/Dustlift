@@ -55,13 +55,6 @@ type TokenForm = {
   communityListed: boolean;
 };
 
-type UpcomingToken = {
-  name: string;
-  symbol: string;
-  creator: string;
-  status: string;
-};
-
 const launchWindowText = "Live Base Activation Registry check";
 const b20LaunchFeeEth = parseEther("0.0003");
 const steps = ["Start", "Details", "Logo & links", "Preview", "Wallet", "Ready"] as const;
@@ -80,12 +73,6 @@ const initialForm: TokenForm = {
   visibleInPool: true,
   communityListed: true,
 };
-
-const upcomingTokens: UpcomingToken[] = [
-  { name: "Base Morning", symbol: "MORN", creator: "0x6f21...91ac", status: "Waiting for B20" },
-  { name: "Dust Club", symbol: "DUSTC", creator: "0x2c44...7d20", status: "Draft ready" },
-  { name: "Builder Spark", symbol: "SPRK", creator: "0x91bd...038a", status: "Launch queue" },
-];
 
 function normalizeSymbol(value: string) {
   return value.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 12);
@@ -188,7 +175,6 @@ export function B20LaunchWizard() {
   const [message, setMessage] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [createdToken, setCreatedToken] = useState<CreatedToken | null>(null);
-  const [draftSaved, setDraftSaved] = useState(false);
   const [showLaunchOptions, setShowLaunchOptions] = useState(false);
 
   const b20FeeRecipient = useMemo(() => {
@@ -220,16 +206,7 @@ export function B20LaunchWizard() {
         ? "Activation check unavailable"
         : "Waiting for Base activation";
 
-  const visibleTokens = useMemo(() => {
-    if (!draftSaved || !tokenName || !tokenSymbol) return upcomingTokens;
-    return [
-      { name: tokenName, symbol: tokenSymbol, creator: shortAddress(address), status: "Your draft" },
-      ...upcomingTokens,
-    ];
-  }, [address, draftSaved, tokenName, tokenSymbol]);
-
   function updateForm<K extends keyof TokenForm>(key: K, value: TokenForm[K]) {
-    setDraftSaved(false);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -239,7 +216,6 @@ export function B20LaunchWizard() {
 
     try {
       const logoDataUrl = await resizeLogoFile(file);
-      setDraftSaved(false);
       setForm((current) => ({
         ...current,
         logoUrl: logoDataUrl,
@@ -296,8 +272,6 @@ export function B20LaunchWizard() {
       await handleSwitchBase();
       return;
     }
-
-    setDraftSaved(true);
 
     if (activationChecking) {
       setStatus("waiting");
@@ -414,7 +388,6 @@ export function B20LaunchWizard() {
 
       await publicClient.waitForTransactionReceipt({ hash });
       setCreatedToken({ address: predictedAddress, hash });
-      setDraftSaved(true);
       setStatus("ready");
       setMessage("B20 token olusturuldu. Token adresi ve BaseScan linki hazir.");
     } catch (error) {
@@ -489,7 +462,7 @@ export function B20LaunchWizard() {
               Start B20 launch
             </button>
           </div>
-          <UpcomingTokenList tokens={visibleTokens} compact />
+          <CreatedTokenList token={createdToken} form={form} creator={address} compact />
         </div>
       )}
 
@@ -732,7 +705,7 @@ export function B20LaunchWizard() {
         </StepPanel>
       )}
 
-      <UpcomingTokenList tokens={visibleTokens} />
+      <CreatedTokenList token={createdToken} form={form} creator={address} />
     </section>
   );
 }
@@ -819,37 +792,59 @@ function Notice({ tone, children }: { tone: "info" | "error"; children: React.Re
   return <div className={`rounded-xl border px-4 py-3 text-sm ${tone === "error" ? "border-red-900/50 bg-red-950/30 text-red-300" : "border-[#3d4a3f] bg-[#141a16] text-[#c5cdc6]"}`}>{children}</div>;
 }
 
-function UpcomingTokenList({ tokens, compact = false }: { tokens: UpcomingToken[]; compact?: boolean }) {
+function CreatedTokenList({ token, form, creator, compact = false }: { token: CreatedToken | null; form: TokenForm; creator?: string; compact?: boolean }) {
   return (
     <div className="rounded-2xl border border-[#2a332c] bg-[#101611] p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">Launch queue</p>
-          <h3 className="mt-1 font-serif text-2xl italic text-[#e8e4dc]">B20 drafts getting ready</h3>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">Created tokens</p>
+          <h3 className="mt-1 font-serif text-2xl italic text-[#e8e4dc]">Live B20 launches</h3>
         </div>
-        <span className="rounded-full border border-[#6b8f71]/50 bg-[#122017] px-3 py-1 text-xs font-semibold text-[#79e0a2]">Soon</span>
+        <span className="rounded-full border border-[#6b8f71]/50 bg-[#122017] px-3 py-1 text-xs font-semibold text-[#79e0a2]">
+          {token ? "Live" : "Coming soon"}
+        </span>
       </div>
-      <div className={`mt-4 grid gap-3 ${compact ? "" : "lg:grid-cols-3"}`}>
-        {tokens.slice(0, compact ? 3 : 6).map((token) => <UpcomingTokenCard key={`${token.symbol}-${token.creator}`} token={token} small={compact} />)}
-      </div>
+      {token ? (
+        <div className={`mt-4 grid gap-3 ${compact ? "" : "lg:grid-cols-3"}`}>
+          <CreatedTokenCard token={token} form={form} creator={creator} small={compact} />
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-[#3d4a3f] bg-[#141a16] p-5 text-sm leading-6 text-[#8a9a8c]">
+          <p className="font-semibold text-[#e8e4dc]">Created tokens coming soon.</p>
+          <p className="mt-2">
+            Once a real B20 token is created through DustLift, it will appear here with its token page and BaseScan link.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-function UpcomingTokenCard({ token, small = false }: { token: UpcomingToken; small?: boolean }) {
+function CreatedTokenCard({ token, form, creator, small = false }: { token: CreatedToken; form: TokenForm; creator?: string; small?: boolean }) {
+  const name = form.name.trim() || "B20 token";
+  const symbol = normalizeSymbol(form.symbol) || token.address.slice(2, 6).toUpperCase();
+
   return (
     <div className="rounded-xl border border-[#3d4a3f]/60 bg-[#141a16] p-4">
       <div className="flex items-start gap-3">
-        <LogoMark logoUrl="" symbol={token.symbol} name={token.name} small />
+        <LogoMark logoUrl={form.logoUrl} symbol={symbol} name={name} small />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-[#e8e4dc]">{token.name}</p>
-          <p className="text-sm text-[#6b8f71]">${token.symbol}</p>
+          <p className="truncate font-semibold text-[#e8e4dc]">{name}</p>
+          <p className="text-sm text-[#6b8f71]">${symbol}</p>
         </div>
       </div>
-      {!small && <p className="mt-3 text-sm text-[#8a9a8c]">Ready to launch when B20 creation opens.</p>}
+      {!small && <p className="mt-3 break-all text-sm text-[#8a9a8c]">{token.address}</p>}
       <div className="mt-4 grid gap-2 text-xs text-[#8a9a8c]">
-        <div className="flex justify-between gap-3"><span>Creator</span><span className="text-[#c5cdc6]">{token.creator}</span></div>
-        <div className="flex justify-between gap-3"><span>Status</span><span className="text-[#c5cdc6]">{token.status}</span></div>
+        <div className="flex justify-between gap-3"><span>Creator</span><span className="text-[#c5cdc6]">{shortAddress(creator)}</span></div>
+        <div className="flex justify-between gap-3"><span>Status</span><span className="text-[#c5cdc6]">Created</span></div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a href={`https://basescan.org/token/${token.address}`} target="_blank" rel="noreferrer" className="secondary-button text-xs">
+          BaseScan
+        </a>
+        <a href={`/token/${token.address}`} className="secondary-button text-xs">
+          Token page
+        </a>
       </div>
     </div>
   );
