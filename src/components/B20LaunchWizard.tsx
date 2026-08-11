@@ -62,7 +62,7 @@ type UpcomingToken = {
   status: string;
 };
 
-const launchWindowText = "8 July 2026, 21:00 Turkey time";
+const launchWindowText = "Live Base Activation Registry check";
 const b20LaunchFeeEth = parseEther("0.0003");
 const steps = ["Start", "Details", "Logo & links", "Preview", "Wallet", "Ready"] as const;
 
@@ -433,16 +433,18 @@ export function B20LaunchWizard() {
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-[#6b8f71]">B20 Launch Wizard</p>
           <h2 className="font-serif text-3xl italic text-[#e8e4dc]">
-            Prepare your B20 token before launch opens.
+            Create and launch B20 tokens on Base.
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#a8b0a4]">
-            Enter the same details you will use after activation. DustLift will not create a demo token now; the real Create B20 Token action opens when Base Activation Registry returns active.
+            DustLift is a Base-native token creation and launch platform for
+            users who want to create, customize, and publish B20 assets without
+            complex deployment infrastructure.
           </p>
         </div>
         <div className="rounded-xl border border-[#6b8f71]/50 bg-[#122017] px-4 py-3 text-sm text-[#c5cdc6]">
           <p className="text-xs uppercase tracking-wide text-[#79e0a2]">Activation status</p>
           <p className="mt-1">{activationStatusText}</p>
-          <p className="mt-1 text-xs text-[#8a9a8c]">Target: {launchWindowText}</p>
+          <p className="mt-1 text-xs text-[#8a9a8c]">{launchWindowText}</p>
         </div>
       </div>
 
@@ -477,12 +479,14 @@ export function B20LaunchWizard() {
             <p className="text-sm font-semibold text-[#6b8f71]">
               B20 tokenini dakikalar icinde olustur, DustLift&apos;te listele ve toplulugunu baslat.
             </p>
-            <h3 className="mt-4 font-serif text-4xl italic text-[#e8e4dc]">Get launch-ready now.</h3>
+            <h3 className="mt-4 font-serif text-4xl italic text-[#e8e4dc]">Launch a B20 asset on Base.</h3>
             <p className="mt-3 text-sm leading-6 text-[#a8b0a4]">
-              Fill in your token name, symbol, supply, logo, and social links now. After activation, return here and press Create B20 Token to launch with your wallet.
+              Add a token name, symbol, supply, logo, and optional links. When
+              the Base registry confirms B20 creation is active, DustLift opens
+              the real wallet transaction for your launch.
             </p>
             <button type="button" onClick={goNext} className="mt-6 rounded-xl bg-[#e8e4dc] px-5 py-3 text-sm font-semibold text-[#0f1410] transition hover:bg-white">
-              Prepare token details
+              Start B20 launch
             </button>
           </div>
           <UpcomingTokenList tokens={visibleTokens} compact />

@@ -21,14 +21,14 @@ const playfair = Playfair_Display({
 });
 
 const appUrl =
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://base-dust-sweep.vercel.app";
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://dustlift.vercel.app";
 
 const baseAppId = "6a3f13295e3e3d1418bc2d18";
 
 export const metadata: Metadata = {
   title: `${APP_NAME} - ${APP_TAGLINE}`,
   description:
-    "Scan Base wallet dust and scam tokens, batch-convert to ETH, swap assets, and view Base wallet activity.",
+    "DustLift is a live Base-native token creation and launch platform that helps non-technical users create, customize, and launch B20 tokens on Base.",
   metadataBase: new URL(appUrl),
   icons: {
     icon: "/icon.png",

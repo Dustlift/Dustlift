@@ -29,5 +29,5 @@ export const REVOKE_CASH_BASE = "https://revoke.cash/address";
 export const DEFAULT_FEE_BPS = 75;
 
 export const APP_NAME = "DustLift";
-export const APP_TAGLINE = "Turn wallet dust into ETH on Base";
-export const APP_CATEGORY = "DeFi";
+export const APP_TAGLINE = "Create and launch B20 tokens on Base in minutes";
+export const APP_CATEGORY = "Launchpad";
